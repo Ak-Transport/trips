@@ -14305,7 +14305,8 @@ function rfPrintSelected() {
     fuel:    'FUEL REQUEST FORM',
     mileage: 'MILEAGE REQUEST FORM',
     toll:    'ROAD TOLL REQUEST FORM — TUNDUMA',
-    permit:  'TRIP PERMITS REQUEST FORM'
+    permit:  'TRIP PERMITS REQUEST FORM',
+    addexp:  'ADDITIONAL EXPENSE REQUEST FORM'
   };
   var fuelPrice = parseFloat(SETTINGS.fuelPrice||3200);
   var totalAmtTZS=0, totalAmtUSD=0, totalLtrs=0;
@@ -14318,20 +14319,23 @@ function rfPrintSelected() {
     if (_rfCurrentTab==='fuel') return '<tr><td>'+esc(r.releaseNo||'—')+'</td><td><b>'+esc(r.tripNo||'—')+'</b></td><td>'+esc(r.horse||'—')+'</td><td>'+esc(t?t.driver||'—':'—')+'</td><td>'+esc(drv?drv.licenseNo||'—':'—')+'</td><td>'+esc(t?t.destination||'—':'—')+'</td><td style="text-align:right">'+fmt(r.litres||0)+'</td><td style="text-align:right;font-weight:700">'+fmt(r.amountTZS||0)+'</td></tr>';
     if (_rfCurrentTab==='mileage') return '<tr><td>'+esc(r.releaseNo||'—')+'</td><td><b>'+esc(r.tripNo||'—')+'</b></td><td>'+esc(r.horse||'—')+'</td><td>'+esc(t?t.driver||'—':'—')+'</td><td>'+esc(t?t.destination||'—':'—')+'</td><td style="text-align:right;font-weight:700">'+fmt(r.amountTZS||0)+'</td><td style="text-align:right">___________</td></tr>';
     if (_rfCurrentTab==='toll')    return '<tr><td>'+esc(r.releaseNo||'—')+'</td><td><b>'+esc(r.tripNo||'—')+'</b></td><td>'+esc(r.horse||'—')+'</td><td>'+esc(t?t.driver||'—':'—')+'</td><td>'+esc(t?t.destination||'—':'—')+'</td><td style="text-align:right;font-weight:700">'+fmtDec(r.amountUSD||0)+'</td></tr>';
+    if (_rfCurrentTab==='addexp')  return '<tr><td>'+esc(r.horse||'—')+'</td><td>'+esc(r.driver||'—')+'</td><td>'+esc(r.tripNo||'—')+'</td><td>'+esc(r.expenseType||'—')+'</td><td>'+esc(r.description||'—')+'</td><td>'+esc(r.supplier||'—')+'</td><td style="text-align:right">'+(r.qty?fmt(r.qty):'—')+'</td><td>'+esc(r.unit||'—')+'</td><td style="text-align:right;font-weight:700">'+fmt(r.amountTZS||0)+'</td><td>'+esc(r.chargeTo||'—')+'</td></tr>';
     return '<tr><td>'+esc(r.releaseNo||'—')+'</td><td><b>'+esc(r.tripNo||'—')+'</b></td><td>'+esc(r.horse||'—')+'</td><td>'+esc(t?t.driver||'—':'—')+'</td><td>'+esc(r.permitType||r.description||'—')+'</td><td>'+esc(t?t.destination||'—':'—')+'</td><td style="text-align:right;font-weight:700">'+fmt(r.amountTZS||0)+'</td><td>'+fmtDate(r.permitExpiry||'')+'</td></tr>';
   }).join('');
   var theadMap = {
     fuel:    '<tr><th>Release</th><th>Trip No</th><th>Truck</th><th>Driver</th><th>License No</th><th>Destination</th><th style="text-align:right">Litres</th><th style="text-align:right">Amount (TZS)</th></tr>',
     mileage: '<tr><th>Release</th><th>Trip No</th><th>Truck</th><th>Driver</th><th>Destination</th><th style="text-align:right">Amount (TZS)</th><th style="text-align:right">Bonus (TZS)</th></tr>',
     toll:    '<tr><th>Release</th><th>Trip No</th><th>Truck</th><th>Driver</th><th>Destination</th><th style="text-align:right">Amount (USD)</th></tr>',
-    permit:  '<tr><th>Release</th><th>Trip No</th><th>Truck</th><th>Driver</th><th>Permit Type</th><th>Destination</th><th style="text-align:right">Amount (TZS)</th><th>Expiry</th></tr>'
+    permit:  '<tr><th>Release</th><th>Trip No</th><th>Truck</th><th>Driver</th><th>Permit Type</th><th>Destination</th><th style="text-align:right">Amount (TZS)</th><th>Expiry</th></tr>',
+    addexp:  '<tr><th>Truck</th><th>Driver</th><th>Trip</th><th>Type</th><th>Description</th><th>Supplier</th><th style="text-align:right">Qty</th><th>Unit</th><th style="text-align:right">Amount (TZS)</th><th>Charge To</th></tr>'
   };
-  var colspanMap={fuel:6,mileage:5,toll:5,permit:6};
+  var colspanMap={fuel:6,mileage:5,toll:5,permit:6,addexp:8};
   var footerAmt = _rfCurrentTab==='toll'
     ? '<td style="text-align:right">USD '+fmtDec(totalAmtUSD)+'</td>'
     : '<td style="text-align:right">TZS '+fmt(totalAmtTZS)+'</td>'+(totalLtrs>0?'<td></td>':'');
   if (_rfCurrentTab==='mileage') footerAmt+='<td></td>';
   if (_rfCurrentTab==='permit')  footerAmt+='<td></td>';
+  if (_rfCurrentTab==='addexp')  footerAmt+='<td></td>';
   var extraInfo = _rfCurrentTab==='fuel'?'<p style="font-size:11px;color:#444;margin-bottom:10px">Fuel Price: TZS '+fmt(fuelPrice)+'/ltr</p>':_rfCurrentTab==='toll'?'<p style="font-size:11px;color:#444;margin-bottom:10px">Border: Tunduma &nbsp;&nbsp; Rate: USD '+fmtDec(parseFloat(SETTINGS.tollTunduma||330))+' per truck</p>':'';
   var reqby = recs[0] ? recs[0].requestedBy||'' : '';
   _printFormWindow({

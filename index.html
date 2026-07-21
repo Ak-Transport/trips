@@ -721,7 +721,7 @@ td,td *{font-size:13px!important;font-family:'Inter',sans-serif!important}
                   <input type="file" id="et-loaddoc-file" accept=".pdf,.jpg,.jpeg,.png" style="display:none" onchange="_handleAtDocSelect(this,'et-loaddoc')">
                   <span id="et-loaddoc-label">&#128206; Click to attach loading document</span>
                 </div>
-                <a id="et-loaddoc-view" href="#" target="_blank" onclick="return downloadDoc(this.href)" class="btn bg" style="font-size:12px;padding:8px 12px;text-decoration:none;display:none">&#128065; View</a>
+                <a id="et-loaddoc-view" href="#" target="_blank" onclick="return downloadDoc(this.href)" class="btn bg" style="font-size:12px;padding:8px 12px;text-decoration:none;display:none">&#128229; Download</a>
               </div>
             </div>
             <div id="et-offdoc-wrap" style="display:none">
@@ -731,7 +731,7 @@ td,td *{font-size:13px!important;font-family:'Inter',sans-serif!important}
                   <input type="file" id="et-offdoc-file" accept=".pdf,.jpg,.jpeg,.png" style="display:none" onchange="_handleAtDocSelect(this,'et-offdoc')">
                   <span id="et-offdoc-label">&#128206; Click to attach offloading document</span>
                 </div>
-                <a id="et-offdoc-view" href="#" target="_blank" onclick="return downloadDoc(this.href)" class="btn bg" style="font-size:12px;padding:8px 12px;text-decoration:none;display:none">&#128065; View</a>
+                <a id="et-offdoc-view" href="#" target="_blank" onclick="return downloadDoc(this.href)" class="btn bg" style="font-size:12px;padding:8px 12px;text-decoration:none;display:none">&#128229; Download</a>
               </div>
             </div>
           </div>
@@ -4345,7 +4345,7 @@ function renderPermits(){
     else{sb='<span class="sb sGR">✅ Valid</span>';dd='<span style="color:#166534;font-weight:600">'+daysLeft+' days</span>';}
     if(!p.documentUrl)sb+=' <span class="sb sAM" style="font-size:9px">📄 No Doc</span>';
     return '<tr><td><b>'+esc(p.vehicle)+'</b></td><td>'+esc(p.vehicleType)+'</td><td>'+esc(p.permitType)+'</td><td>'+fmtDate(p.paymentDate)+'</td><td>'+fmtDate(p.expiryDate)+'</td><td>'+dd+'</td>'
-      +'<td>'+(p.documentUrl?'<a href="'+p.documentUrl+'" target="_blank" onclick="return downloadDoc(this.href)" style="color:var(--hi);font-size:11px">📄 View</a>':'<span style="color:var(--t3);font-size:11px">No doc</span>')+'</td>'
+      +'<td>'+(p.documentUrl?'<a href="'+p.documentUrl+'" target="_blank" onclick="return downloadDoc(this.href)" style="color:var(--hi);font-size:11px">📥 Download</a>':'<span style="color:var(--t3);font-size:11px">No doc</span>')+'</td>'
       +'<td>'+sb+'</td><td><button class="actbtn e" onclick="toast(\'Edit permit — Phase 2\',\'in\')">Edit</button></td></tr>';
   }).join('');
 }
@@ -4874,7 +4874,7 @@ window.renderPermits = function() {
     } else if (inRenewal) {
       docCell = '<span style="color:var(--t3);font-size:11px">—</span>';
     } else if (p && p.documentUrl) {
-      docCell = '<a href="'+esc(p.documentUrl)+'" target="_blank" onclick="return downloadDoc(this.href)" style="color:var(--hi);font-size:11px">📄 View</a>';
+      docCell = '<a href="'+esc(p.documentUrl)+'" target="_blank" onclick="return downloadDoc(this.href)" style="color:var(--hi);font-size:11px">📥 Download</a>';
     } else if (p) {
       docCell = '<span style="color:#b91c1c;font-size:11px">⚠ Missing</span>';
     } else {
@@ -5206,7 +5206,7 @@ function openPermitHistory(vehicle, type) {
         + '<td style="font-weight:600;color:' + (exp<today_dt?'#b91c1c':exp<=warn_dt?'#92400e':'#166534') + '">' + fmtDate(p.expiryDate) + '</td>'
         + '<td style="font-family:monospace;color:var(--ac)">TZS ' + fmt(p.amountPaid) + '</td>'
         + '<td>' + esc(p.receiptNo||'—') + '</td>'
-        + '<td>' + (p.documentUrl ? '<a href="'+esc(p.documentUrl)+'" target="_blank" onclick="return downloadDoc(this.href)" style="color:var(--hi);font-weight:600;font-size:12px">📄 Open Doc</a>' : '<button class="actbtn" style="font-size:11px;color:#0071e3;border-color:#0071e3" onclick="openDocUpload(\''+p.id+'\')">⬆ Upload Doc</button>') + '</td>'
+        + '<td>' + (p.documentUrl ? '<a href="'+esc(p.documentUrl)+'" target="_blank" onclick="return downloadDoc(this.href)" style="color:var(--hi);font-weight:600;font-size:12px">📥 Download</a>' : '<button class="actbtn" style="font-size:11px;color:#0071e3;border-color:#0071e3" onclick="openDocUpload(\''+p.id+'\')">⬆ Upload Doc</button>') + '</td>'
         + '<td>' + sb + '</td>'
         + '<td><button class="actbtn e" onclick="editPermitRecord(\'' + p.id + '\')">Edit</button></td>'
         + '</tr>';
@@ -6861,7 +6861,7 @@ async function _uploadReleaseDocIfNeeded(prefix, refLabel) {
 }
 function _letterViewLink(url) {
   return url
-    ? '<a href="'+esc(url)+'" target="_blank" onclick="return downloadDoc(this.href)" style="color:var(--hi);font-weight:600;font-size:11px">&#128206; View Letter</a>'
+    ? '<a href="'+esc(url)+'" target="_blank" onclick="return downloadDoc(this.href)" style="color:var(--hi);font-weight:600;font-size:11px">&#128229; Download Letter</a>'
     : '<span style="color:var(--t3);font-size:11px">No letter</span>';
 }
 
@@ -8314,7 +8314,7 @@ function renderPermits(){
     else{sb='<span class="sb sGR">✅ Valid</span>';dd='<span style="color:#166534;font-weight:600">'+daysLeft+' days</span>';}
     if(!p.documentUrl)sb+=' <span class="sb sAM" style="font-size:9px">📄 No Doc</span>';
     return '<tr><td><b>'+esc(p.vehicle)+'</b></td><td>'+esc(p.vehicleType)+'</td><td>'+esc(p.permitType)+'</td><td>'+fmtDate(p.paymentDate)+'</td><td>'+fmtDate(p.expiryDate)+'</td><td>'+dd+'</td>'
-      +'<td>'+(p.documentUrl?'<a href="'+p.documentUrl+'" target="_blank" onclick="return downloadDoc(this.href)" style="color:var(--hi);font-size:11px">📄 View</a>':'<span style="color:var(--t3);font-size:11px">No doc</span>')+'</td>'
+      +'<td>'+(p.documentUrl?'<a href="'+p.documentUrl+'" target="_blank" onclick="return downloadDoc(this.href)" style="color:var(--hi);font-size:11px">📥 Download</a>':'<span style="color:var(--t3);font-size:11px">No doc</span>')+'</td>'
       +'<td>'+sb+'</td><td><button class="actbtn e" onclick="toast(\'Edit permit — Phase 2\',\'in\')">Edit</button></td></tr>';
   }).join('');
 }
@@ -8827,7 +8827,7 @@ window.renderPermits = function() {
     } else if (inRenewal) {
       docCell = '<span style="color:var(--t3);font-size:11px">—</span>';
     } else if (p && p.documentUrl) {
-      docCell = '<a href="'+esc(p.documentUrl)+'" target="_blank" onclick="return downloadDoc(this.href)" style="color:var(--hi);font-size:11px">📄 View</a>';
+      docCell = '<a href="'+esc(p.documentUrl)+'" target="_blank" onclick="return downloadDoc(this.href)" style="color:var(--hi);font-size:11px">📥 Download</a>';
     } else if (p) {
       docCell = '<span style="color:#b91c1c;font-size:11px">⚠ Missing</span>';
     } else {
@@ -9159,7 +9159,7 @@ function openPermitHistory(vehicle, type) {
         + '<td style="font-weight:600;color:' + (exp<today_dt?'#b91c1c':exp<=warn_dt?'#92400e':'#166534') + '">' + fmtDate(p.expiryDate) + '</td>'
         + '<td style="font-family:monospace;color:var(--ac)">TZS ' + fmt(p.amountPaid) + '</td>'
         + '<td>' + esc(p.receiptNo||'—') + '</td>'
-        + '<td>' + (p.documentUrl ? '<a href="'+esc(p.documentUrl)+'" target="_blank" onclick="return downloadDoc(this.href)" style="color:var(--hi);font-weight:600;font-size:12px">📄 Open Doc</a>' : '<button class="actbtn" style="font-size:11px;color:#0071e3;border-color:#0071e3" onclick="openDocUpload(\''+p.id+'\')">⬆ Upload Doc</button>') + '</td>'
+        + '<td>' + (p.documentUrl ? '<a href="'+esc(p.documentUrl)+'" target="_blank" onclick="return downloadDoc(this.href)" style="color:var(--hi);font-weight:600;font-size:12px">📥 Download</a>' : '<button class="actbtn" style="font-size:11px;color:#0071e3;border-color:#0071e3" onclick="openDocUpload(\''+p.id+'\')">⬆ Upload Doc</button>') + '</td>'
         + '<td>' + sb + '</td>'
         + '<td><button class="actbtn e" onclick="editPermitRecord(\'' + p.id + '\')">Edit</button></td>'
         + '</tr>';
@@ -11341,7 +11341,7 @@ function _expenseTable(expenses) {
           +'<td style="padding:8px 10px">'+esc(e.expenseType||'—')+'</td>'
           +'<td style="padding:8px 10px;font-family:monospace;color:#b91c1c">TZS '+fmt(e.amountTZS||0)+'</td>'
           +'<td style="padding:8px 10px">'+esc(e.settlementMethod||'—')+'</td>'
-          +'<td style="padding:8px 10px">'+(e.letterUrl?'<a href="'+esc(e.letterUrl)+'" target="_blank" onclick="return downloadDoc(this.href)" style="color:var(--hi);font-size:11px">📄 View</a>':'<span style="color:var(--t3);font-size:11px">No letter</span>')+'</td>'
+          +'<td style="padding:8px 10px">'+(e.letterUrl?'<a href="'+esc(e.letterUrl)+'" target="_blank" onclick="return downloadDoc(this.href)" style="color:var(--hi);font-size:11px">📥 Download</a>':'<span style="color:var(--t3);font-size:11px">No letter</span>')+'</td>'
           +'<td style="padding:8px 10px">'+drvExpStatusBadge(e.status)+'</td>'
           +'<td style="padding:8px 10px;white-space:nowrap">'
           +(e.status!=='SETTLED'?'<button class="actbtn e" onclick="openDriverExpSettlement(\''+e.id+'\')">Settle</button>':'')
@@ -14908,7 +14908,7 @@ window.renderReleases = function() {
       +'<td style="text-align:center;color:#d97706;font-weight:600">'+remaining+'</td>'
       +'<td>'+_assignmentStatusBadge(assigned, total)+'</td>'
       +'<td>'+_deliveryStatusBadge(assignedTrips, assigned, total)+'</td>'
-      +'<td>'+(r.docUrl?'<a href="'+esc(r.docUrl)+'" target="_blank" onclick="return downloadDoc(this.href)" style="color:var(--hi);font-weight:600;font-size:11px">&#128206; View</a>':'<span style="color:var(--t3);font-size:11px">—</span>')+'</td>'
+      +'<td>'+(r.docUrl?'<a href="'+esc(r.docUrl)+'" target="_blank" onclick="return downloadDoc(this.href)" style="color:var(--hi);font-weight:600;font-size:11px">&#128229; Download</a>':'<span style="color:var(--t3);font-size:11px">—</span>')+'</td>'
       +'<td class="td-actions">'+editBtn+' '+delBtn+'</td>'
       +'</tr>';
   }).join('');
@@ -15152,7 +15152,7 @@ function _doBulkEditReleases(ids) {
       +'<input type="file" id="rbe-doc-file-'+idx+'" accept=".pdf,.jpg,.jpeg,.png" style="display:none" onchange="_handleLetterSelect(this,\'rbe-doc-'+idx+'\')">'
       +'<span id="rbe-doc-label-'+idx+'">&#128206; '+(r.docUrl?'Replace attached document':'Click to attach release document')+'</span>'
       +'</div>'
-      +(r.docUrl?'<a href="'+esc(r.docUrl)+'" target="_blank" onclick="return downloadDoc(this.href)" class="btn bg" style="font-size:12px;padding:8px 14px;text-decoration:none">&#128065; View Current</a>':'')
+      +(r.docUrl?'<a href="'+esc(r.docUrl)+'" target="_blank" onclick="return downloadDoc(this.href)" class="btn bg" style="font-size:12px;padding:8px 14px;text-decoration:none">&#128229; Download Current</a>':'')
       +'</div></div>'
       +'</div>';
 

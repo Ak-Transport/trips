@@ -2083,7 +2083,14 @@ td,td *{font-size:13px!important;font-family:'Inter',sans-serif!important}
         <div class="formgroup"><label>Expiry Date (auto)</label><input type="text" id="pmt-expiry" readonly></div>
         <div class="formgroup"><label>Amount Paid (TZS)</label><input type="number" id="pmt-amount" min="0" placeholder="0"></div>
         <div class="formgroup"><label>Receipt No</label><input type="text" id="pmt-receipt" placeholder="Receipt number..."></div>
-        <div class="formgroup full"><label>Document Link <span style="font-weight:400;color:var(--t3);text-transform:none;letter-spacing:0">— paste a Google Drive share link (optional)</span></label><input type="text" id="pmt-docurl" placeholder="https://drive.google.com/..."></div>
+        <div class="formgroup full">
+          <label>Document</label>
+          <div style="display:flex;gap:10px;align-items:center">
+            <button type="button" class="btn bg" onclick="uploadPmtDocFile()" id="pmt-upload-btn">&#128228; Upload File</button>
+            <span id="pmt-doc-status" style="font-size:12px;color:var(--t3)">No document uploaded</span>
+          </div>
+          <input type="hidden" id="pmt-docurl">
+        </div>
         <div class="formgroup full"><label>Notes</label><textarea id="pmt-notes" placeholder="Notes..."></textarea></div>
       </div>
     </div>
@@ -4300,6 +4307,8 @@ function _openPermitModalShell(){
   document.getElementById('pmt-vehicle').innerHTML='<option value="">Select vehicle...</option>'+VEHICLES.map(function(v){return '<option>'+esc(v.plate||v.code)+'</option>';}).join('');
   ['pmt-vtype','pmt-type','pmt-applies','pmt-expiry','pmt-amount','pmt-receipt','pmt-docurl','pmt-notes'].forEach(function(id){var el=document.getElementById(id);if(el)el.value='';});
   document.getElementById('pmt-date').value=today();
+  var uBtn=document.getElementById('pmt-upload-btn'); if(uBtn){uBtn.disabled=false;uBtn.innerHTML='&#128228; Upload File';}
+  var uStatus=document.getElementById('pmt-doc-status'); if(uStatus) uStatus.innerHTML='No document uploaded';
   document.getElementById('modal-permit').classList.remove('hidden');
 }
 function openAddPermit(){
@@ -4308,6 +4317,39 @@ function openAddPermit(){
 function onPermitVehicleChange(){var plate=document.getElementById('pmt-vehicle').value;var veh=VEHICLES.find(function(v){return(v.plate||v.code||'')===plate;});document.getElementById('pmt-vtype').value=veh?(veh.vehicleType||''):'';}
 function onPermitTypeChange(){var type=document.getElementById('pmt-type').value;document.getElementById('pmt-applies').value=PERMIT_APPLIES[type]||'';calcPermitExpiry();}
 function calcPermitExpiry(){var date=document.getElementById('pmt-date').value;var type=document.getElementById('pmt-type').value;if(!date||!type)return;var days=PERMIT_DURATIONS[type]||365;var exp=new Date(date);exp.setDate(exp.getDate()+days);document.getElementById('pmt-expiry').value=exp.toISOString().split('T')[0];}
+async function uploadPmtDocFile() {
+  var vehicle = document.getElementById('pmt-vehicle').value;
+  var type    = document.getElementById('pmt-type').value;
+  if (!vehicle || !type) { toast('Select Vehicle and Permit Type first','er'); return; }
+  var input = document.createElement('input');
+  input.type = 'file'; input.accept = 'image/*,.pdf';
+  input.onchange = function(e) {
+    var file = e.target.files[0]; if (!file) return;
+    var reader = new FileReader();
+    reader.onload = async function(ev) {
+      var btn = document.getElementById('pmt-upload-btn');
+      if (btn) { btn.disabled = true; btn.textContent = 'Uploading...'; }
+      try {
+        var res = await callAPI('uploadPermitDoc', {
+          vehicle: vehicle, permitType: type,
+          fileName: vehicle + '_' + type.replace(/\s/g,'_') + '_' + Date.now() + '.pdf',
+          fileData: ev.target.result
+        });
+        if (res && res.error) throw new Error(res.error);
+        var url = res ? (res.viewUrl || res.url || '') : '';
+        if (!url) throw new Error('No URL returned from server');
+        document.getElementById('pmt-docurl').value = url;
+        var statusEl = document.getElementById('pmt-doc-status');
+        if (statusEl) statusEl.innerHTML = '&#9989; ' + esc(file.name) + ' uploaded';
+        toast('Document uploaded \u2713','ok');
+      } catch(err) { toast('Upload failed: '+err.message,'er'); }
+      finally { if (btn) { btn.disabled = false; btn.innerHTML = '&#128228; Upload File'; } }
+    };
+    reader.readAsDataURL(file);
+  };
+  input.click();
+}
+
 async function savePermit(){
   var vehicle=document.getElementById('pmt-vehicle').value;var type=document.getElementById('pmt-type').value;var date=document.getElementById('pmt-date').value;
   if(!vehicle||!type||!date){toast('Fill required fields','er');return;}
@@ -4647,7 +4689,6 @@ window.addEventListener('load',function(){initLogin();var el=document.getElement
     </div>
     <div class="modalfoot">
       <button class="btn bg" onclick="closeModal('modal-permit-history')">Close</button>
-      <button class="btn bp" onclick="openAddPermitForVehicle()">+ Record New Renewal</button>
     </div>
   </div>
 </div>
@@ -4667,7 +4708,6 @@ window.addEventListener('load',function(){initLogin();var el=document.getElement
     </div>
     <div class="modalfoot">
       <button class="btn bg" onclick="closeModal('modal-vehicle-permits')">Close</button>
-      <button class="btn bp" id="vpm-add-btn" onclick="openAddPermitForVehicle()">+ Record Permit</button>
     </div>
   </div>
 </div>
@@ -5206,9 +5246,9 @@ function openPermitHistory(vehicle, type) {
         + '<td style="font-weight:600;color:' + (exp<today_dt?'#b91c1c':exp<=warn_dt?'#92400e':'#166534') + '">' + fmtDate(p.expiryDate) + '</td>'
         + '<td style="font-family:monospace;color:var(--ac)">TZS ' + fmt(p.amountPaid) + '</td>'
         + '<td>' + esc(p.receiptNo||'—') + '</td>'
-        + '<td>' + (p.documentUrl ? '<a href="'+esc(p.documentUrl)+'" target="_blank" onclick="return downloadDoc(this.href)" style="color:var(--hi);font-weight:600;font-size:12px">📥 Download</a>' : '<button class="actbtn" style="font-size:11px;color:#0071e3;border-color:#0071e3" onclick="openDocUpload(\''+p.id+'\')">⬆ Upload Doc</button>') + '</td>'
+        + '<td>' + (p.documentUrl ? '<a href="'+esc(p.documentUrl)+'" target="_blank" onclick="return downloadDoc(this.href)" style="color:var(--hi);font-weight:600;font-size:12px">📥 Download</a>' : '<button class="actbtn" style="font-size:11px;color:#0071e3;border-color:#0071e3" onclick="openDocUpload(\''+p.id+'\',this)">⬆ Upload Doc</button>') + '</td>'
         + '<td>' + sb + '</td>'
-        + '<td><button class="actbtn e" onclick="editPermitRecord(\'' + p.id + '\')">Edit</button></td>'
+        + '<td><button class="actbtn e" onclick="closeModal(\'modal-permit-history\');editPermitRecord(\'' + p.id + '\')">Edit</button></td>'
         + '</tr>';
     }).join('');
   }
@@ -5222,7 +5262,6 @@ function openVehiclePermitOverview(plate) {
   var v = VEHICLES.find(function(x){ return (x.plate||x.code||'') === plate; }) || {};
   document.getElementById('vpm-title').textContent = '🚛 ' + plate + ' — Permit Overview';
   document.getElementById('vpm-sub').textContent   = (v.vehicleType||'') + ' — All permit status at a glance';
-  document.getElementById('vpm-add-btn').onclick   = function(){ closeModal('modal-vehicle-permits'); openAddPermitForVehicle(plate); };
 
   var today_dt = new Date(); today_dt.setHours(0,0,0,0);
   var alertDays = parseInt(SETTINGS.expiryAlertDays)||30;
@@ -5332,6 +5371,8 @@ function editPermitRecord(id) {
     document.getElementById('pmt-amount').value  = p.amountPaid || '';
     document.getElementById('pmt-receipt').value = p.receiptNo || '';
     document.getElementById('pmt-docurl').value  = p.documentUrl || '';
+    var _pmtStatus = document.getElementById('pmt-doc-status');
+    if (_pmtStatus) _pmtStatus.innerHTML = p.documentUrl ? '&#9989; Document on file (upload to replace)' : 'No document uploaded';
     document.getElementById('pmt-notes').value   = p.notes || '';
   }, 50);
 }
@@ -5384,7 +5425,7 @@ window.savePermit = async function() {
 
 // ── PHASE 2: DOCUMENT UPLOAD ──────────────────────────────────────
 var _docUploadPermitId = '';
-function openDocUpload(permitId) {
+function openDocUpload(permitId, btnEl) {
   _docUploadPermitId = permitId;
   var input = document.createElement('input');
   input.type = 'file';
@@ -5392,27 +5433,40 @@ function openDocUpload(permitId) {
   input.onchange = function(e) {
     var file = e.target.files[0];
     if (!file) return;
-    // In production: upload to Google Drive via Apps Script
-    // For now: create object URL as preview and store filename
-    var url = URL.createObjectURL(file);
-    savePermitDocument(permitId, url, file.name);
+    // Actually upload to Google Drive via Apps Script (base64), instead
+    // of the old placeholder that saved a temporary browser-local blob:
+    // URL — that URL only ever worked in the same tab/session it was
+    // created in, so every document "saved" that way became permanently
+    // unopenable (File not found) for anyone, including the same user
+    // after a refresh.
+    var reader = new FileReader();
+    reader.onload = function(ev){ savePermitDocument(permitId, ev.target.result, file.name, btnEl); };
+    reader.readAsDataURL(file);
   };
   input.click();
 }
 
-async function savePermitDocument(permitId, url, filename) {
+async function savePermitDocument(permitId, fileDataUrl, filename, btnEl) {
   var p = PERMITS.find(function(x){ return x.id === permitId; });
   if (!p) return;
-  // Note: In full deployment, this would upload to Google Drive via Apps Script
-  // For now we store the filename as a reference
-  p.documentUrl = url;
-  p.documentName = filename;
+  var _origLabel = btnEl ? btnEl.innerHTML : '';
+  if (btnEl) { if (btnEl.disabled) return; btnEl.disabled = true; btnEl.textContent = 'Uploading...'; }
   try {
+    var uploadResult = await callAPI('uploadPermitDoc', {
+      vehicle: p.vehicle,
+      permitType: p.permitType,
+      fileName: filename,
+      fileData: fileDataUrl
+    });
+    var docUrl = uploadResult && (uploadResult.viewUrl || uploadResult.url) || '';
+    if (!docUrl) { toast('Upload failed — no URL returned from server','er'); if (btnEl) { btnEl.disabled=false; btnEl.innerHTML=_origLabel; } return; }
+    p.documentUrl = docUrl;
+    p.documentName = filename;
     await callAPI('updatePermit', {record: p});
-    toast('Document saved ✓ (upload to Drive in Phase 2 full deploy)', 'ok');
+    toast('Document uploaded ✓', 'ok');
     renderPermits();
     if (_currentPermitHistoryVehicle) openPermitHistory(_currentPermitHistoryVehicle, _currentPermitHistoryType);
-  } catch(e) { toast('Error saving document: ' + e.message, 'er'); }
+  } catch(e) { toast('Error uploading document: ' + e.message, 'er'); if (btnEl) { btnEl.disabled=false; btnEl.innerHTML=_origLabel; } }
 }
 
 function openFleetPermitOverview() {
@@ -8269,6 +8323,8 @@ function _openPermitModalShell(){
   document.getElementById('pmt-vehicle').innerHTML='<option value="">Select vehicle...</option>'+VEHICLES.map(function(v){return '<option>'+esc(v.plate||v.code)+'</option>';}).join('');
   ['pmt-vtype','pmt-type','pmt-applies','pmt-expiry','pmt-amount','pmt-receipt','pmt-docurl','pmt-notes'].forEach(function(id){var el=document.getElementById(id);if(el)el.value='';});
   document.getElementById('pmt-date').value=today();
+  var uBtn=document.getElementById('pmt-upload-btn'); if(uBtn){uBtn.disabled=false;uBtn.innerHTML='&#128228; Upload File';}
+  var uStatus=document.getElementById('pmt-doc-status'); if(uStatus) uStatus.innerHTML='No document uploaded';
   document.getElementById('modal-permit').classList.remove('hidden');
 }
 function openAddPermit(){
@@ -8277,6 +8333,39 @@ function openAddPermit(){
 function onPermitVehicleChange(){var plate=document.getElementById('pmt-vehicle').value;var veh=VEHICLES.find(function(v){return(v.plate||v.code||'')===plate;});document.getElementById('pmt-vtype').value=veh?(veh.vehicleType||''):'';}
 function onPermitTypeChange(){var type=document.getElementById('pmt-type').value;document.getElementById('pmt-applies').value=PERMIT_APPLIES[type]||'';calcPermitExpiry();}
 function calcPermitExpiry(){var date=document.getElementById('pmt-date').value;var type=document.getElementById('pmt-type').value;if(!date||!type)return;var days=PERMIT_DURATIONS[type]||365;var exp=new Date(date);exp.setDate(exp.getDate()+days);document.getElementById('pmt-expiry').value=exp.toISOString().split('T')[0];}
+async function uploadPmtDocFile() {
+  var vehicle = document.getElementById('pmt-vehicle').value;
+  var type    = document.getElementById('pmt-type').value;
+  if (!vehicle || !type) { toast('Select Vehicle and Permit Type first','er'); return; }
+  var input = document.createElement('input');
+  input.type = 'file'; input.accept = 'image/*,.pdf';
+  input.onchange = function(e) {
+    var file = e.target.files[0]; if (!file) return;
+    var reader = new FileReader();
+    reader.onload = async function(ev) {
+      var btn = document.getElementById('pmt-upload-btn');
+      if (btn) { btn.disabled = true; btn.textContent = 'Uploading...'; }
+      try {
+        var res = await callAPI('uploadPermitDoc', {
+          vehicle: vehicle, permitType: type,
+          fileName: vehicle + '_' + type.replace(/\s/g,'_') + '_' + Date.now() + '.pdf',
+          fileData: ev.target.result
+        });
+        if (res && res.error) throw new Error(res.error);
+        var url = res ? (res.viewUrl || res.url || '') : '';
+        if (!url) throw new Error('No URL returned from server');
+        document.getElementById('pmt-docurl').value = url;
+        var statusEl = document.getElementById('pmt-doc-status');
+        if (statusEl) statusEl.innerHTML = '&#9989; ' + esc(file.name) + ' uploaded';
+        toast('Document uploaded \u2713','ok');
+      } catch(err) { toast('Upload failed: '+err.message,'er'); }
+      finally { if (btn) { btn.disabled = false; btn.innerHTML = '&#128228; Upload File'; } }
+    };
+    reader.readAsDataURL(file);
+  };
+  input.click();
+}
+
 async function savePermit(){
   var vehicle=document.getElementById('pmt-vehicle').value;var type=document.getElementById('pmt-type').value;var date=document.getElementById('pmt-date').value;
   if(!vehicle||!type||!date){toast('Fill required fields','er');return;}
@@ -8601,7 +8690,6 @@ document.getElementById('aklgp').addEventListener('keydown',function(e){if(e.key
     </div>
     <div class="modalfoot">
       <button class="btn bg" onclick="closeModal('modal-permit-history')">Close</button>
-      <button class="btn bp" onclick="openAddPermitForVehicle()">+ Record New Renewal</button>
     </div>
   </div>
 </div>
@@ -8621,7 +8709,6 @@ document.getElementById('aklgp').addEventListener('keydown',function(e){if(e.key
     </div>
     <div class="modalfoot">
       <button class="btn bg" onclick="closeModal('modal-vehicle-permits')">Close</button>
-      <button class="btn bp" id="vpm-add-btn" onclick="openAddPermitForVehicle()">+ Record Permit</button>
     </div>
   </div>
 </div>
@@ -9159,9 +9246,9 @@ function openPermitHistory(vehicle, type) {
         + '<td style="font-weight:600;color:' + (exp<today_dt?'#b91c1c':exp<=warn_dt?'#92400e':'#166534') + '">' + fmtDate(p.expiryDate) + '</td>'
         + '<td style="font-family:monospace;color:var(--ac)">TZS ' + fmt(p.amountPaid) + '</td>'
         + '<td>' + esc(p.receiptNo||'—') + '</td>'
-        + '<td>' + (p.documentUrl ? '<a href="'+esc(p.documentUrl)+'" target="_blank" onclick="return downloadDoc(this.href)" style="color:var(--hi);font-weight:600;font-size:12px">📥 Download</a>' : '<button class="actbtn" style="font-size:11px;color:#0071e3;border-color:#0071e3" onclick="openDocUpload(\''+p.id+'\')">⬆ Upload Doc</button>') + '</td>'
+        + '<td>' + (p.documentUrl ? '<a href="'+esc(p.documentUrl)+'" target="_blank" onclick="return downloadDoc(this.href)" style="color:var(--hi);font-weight:600;font-size:12px">📥 Download</a>' : '<button class="actbtn" style="font-size:11px;color:#0071e3;border-color:#0071e3" onclick="openDocUpload(\''+p.id+'\',this)">⬆ Upload Doc</button>') + '</td>'
         + '<td>' + sb + '</td>'
-        + '<td><button class="actbtn e" onclick="editPermitRecord(\'' + p.id + '\')">Edit</button></td>'
+        + '<td><button class="actbtn e" onclick="closeModal(\'modal-permit-history\');editPermitRecord(\'' + p.id + '\')">Edit</button></td>'
         + '</tr>';
     }).join('');
   }
@@ -9175,7 +9262,6 @@ function openVehiclePermitOverview(plate) {
   var v = VEHICLES.find(function(x){ return (x.plate||x.code||'') === plate; }) || {};
   document.getElementById('vpm-title').textContent = '🚛 ' + plate + ' — Permit Overview';
   document.getElementById('vpm-sub').textContent   = (v.vehicleType||'') + ' — All permit status at a glance';
-  document.getElementById('vpm-add-btn').onclick   = function(){ closeModal('modal-vehicle-permits'); openAddPermitForVehicle(plate); };
 
   var today_dt = new Date(); today_dt.setHours(0,0,0,0);
   var alertDays = parseInt(SETTINGS.expiryAlertDays)||30;
@@ -9285,6 +9371,8 @@ function editPermitRecord(id) {
     document.getElementById('pmt-amount').value  = p.amountPaid || '';
     document.getElementById('pmt-receipt').value = p.receiptNo || '';
     document.getElementById('pmt-docurl').value  = p.documentUrl || '';
+    var _pmtStatus = document.getElementById('pmt-doc-status');
+    if (_pmtStatus) _pmtStatus.innerHTML = p.documentUrl ? '&#9989; Document on file (upload to replace)' : 'No document uploaded';
     document.getElementById('pmt-notes').value   = p.notes || '';
   }, 50);
 }
@@ -9337,7 +9425,7 @@ window.savePermit = async function() {
 
 // ── PHASE 2: DOCUMENT UPLOAD ──────────────────────────────────────
 var _docUploadPermitId = '';
-function openDocUpload(permitId) {
+function openDocUpload(permitId, btnEl) {
   _docUploadPermitId = permitId;
   var input = document.createElement('input');
   input.type = 'file';
@@ -9345,27 +9433,40 @@ function openDocUpload(permitId) {
   input.onchange = function(e) {
     var file = e.target.files[0];
     if (!file) return;
-    // In production: upload to Google Drive via Apps Script
-    // For now: create object URL as preview and store filename
-    var url = URL.createObjectURL(file);
-    savePermitDocument(permitId, url, file.name);
+    // Actually upload to Google Drive via Apps Script (base64), instead
+    // of the old placeholder that saved a temporary browser-local blob:
+    // URL — that URL only ever worked in the same tab/session it was
+    // created in, so every document "saved" that way became permanently
+    // unopenable (File not found) for anyone, including the same user
+    // after a refresh.
+    var reader = new FileReader();
+    reader.onload = function(ev){ savePermitDocument(permitId, ev.target.result, file.name, btnEl); };
+    reader.readAsDataURL(file);
   };
   input.click();
 }
 
-async function savePermitDocument(permitId, url, filename) {
+async function savePermitDocument(permitId, fileDataUrl, filename, btnEl) {
   var p = PERMITS.find(function(x){ return x.id === permitId; });
   if (!p) return;
-  // Note: In full deployment, this would upload to Google Drive via Apps Script
-  // For now we store the filename as a reference
-  p.documentUrl = url;
-  p.documentName = filename;
+  var _origLabel = btnEl ? btnEl.innerHTML : '';
+  if (btnEl) { if (btnEl.disabled) return; btnEl.disabled = true; btnEl.textContent = 'Uploading...'; }
   try {
+    var uploadResult = await callAPI('uploadPermitDoc', {
+      vehicle: p.vehicle,
+      permitType: p.permitType,
+      fileName: filename,
+      fileData: fileDataUrl
+    });
+    var docUrl = uploadResult && (uploadResult.viewUrl || uploadResult.url) || '';
+    if (!docUrl) { toast('Upload failed — no URL returned from server','er'); if (btnEl) { btnEl.disabled=false; btnEl.innerHTML=_origLabel; } return; }
+    p.documentUrl = docUrl;
+    p.documentName = filename;
     await callAPI('updatePermit', {record: p});
-    toast('Document saved ✓ (upload to Drive in Phase 2 full deploy)', 'ok');
+    toast('Document uploaded ✓', 'ok');
     renderPermits();
     if (_currentPermitHistoryVehicle) openPermitHistory(_currentPermitHistoryVehicle, _currentPermitHistoryType);
-  } catch(e) { toast('Error saving document: ' + e.message, 'er'); }
+  } catch(e) { toast('Error uploading document: ' + e.message, 'er'); if (btnEl) { btnEl.disabled=false; btnEl.innerHTML=_origLabel; } }
 }
 
 
@@ -11400,7 +11501,8 @@ function openDriverExpSettlement(expId) {
     + '<div class="modalfoot"><button class="btn bg" onclick="closeModal(\'modal-drvexp-settle\')">Cancel</button><button class="btn bp" id="des-save-btn" onclick="saveDriverExpSettlement()">&#128190; Submit Settlement</button></div>'
     + '</div>';
   document.body.appendChild(modal);
-  window._settlementLetterUrl = '';
+  window._settlementLetterData = null;
+  window._settlementLetterName = '';
 }
 
 function onSettleMethodChange() {
@@ -11414,7 +11516,12 @@ function uploadSettlementLetter() {
   input.type = 'file'; input.accept = 'image/*,.pdf';
   input.onchange = function(ev) {
     var file = ev.target.files[0]; if (!file) return;
-    window._settlementLetterUrl = URL.createObjectURL(file);
+    var reader = new FileReader();
+    reader.onload = function(e){
+      window._settlementLetterData = e.target.result; // base64, uploaded to Drive on submit
+      window._settlementLetterName = file.name;
+    };
+    reader.readAsDataURL(file);
     var status = document.getElementById('des-letter-status');
     if (status) status.innerHTML = '✅ <b>' + esc(file.name) + '</b> uploaded';
     var zone = status ? status.parentNode : null;
@@ -11430,15 +11537,24 @@ async function saveDriverExpSettlement() {
   var actby  = document.getElementById('des-actby').value.trim();
   if (!method || !date || !actby) { toast('Fill required fields', 'er'); return; }
   // Validate salary deduction letter
-  if (method === 'Salary Deduction' && !window._settlementLetterUrl) {
+  if (method === 'Salary Deduction' && !window._settlementLetterData) {
     toast('⚠️ Upload the signed letter before submitting salary deduction', 'er'); return;
   }
   var btn = document.getElementById('des-save-btn'); btn.disabled = true; btn.textContent = 'Saving...';
   try {
     var e = DRV_EXPENSES.find(function(x){ return x.id === expId; });
     if (!e) throw new Error('Record not found');
+    var letterUrl = '';
+    if (method === 'Salary Deduction' && window._settlementLetterData) {
+      var uploadRes = await callAPI('uploadPaymentLetter', {
+        fileName: 'settlement_' + expId + '_' + new Date().getTime() + '.pdf',
+        fileData: window._settlementLetterData
+      });
+      if (uploadRes && uploadRes.error) throw new Error(uploadRes.error);
+      letterUrl = uploadRes ? (uploadRes.viewUrl || '') : '';
+    }
     e.settlementMethod = method;
-    e.letterUrl = window._settlementLetterUrl || '';
+    e.letterUrl = letterUrl;
     e.status = 'PENDING';
     e.recordedAt = date;
     e.approvedBy = actby.toUpperCase();

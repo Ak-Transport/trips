@@ -380,6 +380,7 @@ td,td *{font-size:13px!important;font-family:'Inter',sans-serif!important}
         <div><div class="vtitle">&#128203; Release Budget</div><div class="viewsub" id="budget-sub">Select releases to view budget</div></div>
         <div class="tb-divider"></div>
         <button class="btn bp" id="budget-request-btn" onclick="openBulkRequest()" style="display:none">&#128203; Bulk Request</button>
+        <button class="btn bp" id="budget-bonus-btn" onclick="openSetBonus()" style="display:none;background:#166534">&#128176; Set Driver Bonus</button>
         <button class="btn bg" id="budget-print-btn" onclick="openPrintForms()" style="display:none">&#128424; Print Forms</button>
       </div>
       <!-- Filters -->
@@ -499,6 +500,13 @@ td,td *{font-size:13px!important;font-family:'Inter',sans-serif!important}
           </div>
         </div>
 
+        <!-- Mode toggle -->
+        <div style="display:flex;gap:8px;margin-bottom:16px">
+          <button class="btn bp" id="at-mode-single-btn" onclick="switchAddTripsMode('single')" style="font-size:12px">&#10133; Add One by One</button>
+          <button class="btn bg" id="at-mode-bulk-btn" onclick="switchAddTripsMode('bulk')" style="font-size:12px">&#128228; Bulk Upload Trucks/Trailers</button>
+        </div>
+
+        <div id="at-single-mode">
         <!-- Lines header -->
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
           <span style="font-size:11px;font-weight:700;color:var(--ac);text-transform:uppercase;letter-spacing:.06em">Trip Lines — each line = one truck assignment</span>
@@ -510,6 +518,24 @@ td,td *{font-size:13px!important;font-family:'Inter',sans-serif!important}
           <div id="at-empty-state" style="text-align:center;padding:40px;color:var(--t3)">
             <div style="font-size:48px;margin-bottom:12px">&#128666;</div>
             <div style="font-size:14px;font-weight:600;color:var(--t2)">Select a release above to start adding trips</div>
+          </div>
+        </div>
+        </div>
+
+        <!-- Bulk upload mode -->
+        <div id="at-bulk-mode" style="display:none">
+          <div style="background:#fff;border:1.5px solid var(--br);border-radius:12px;padding:20px">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
+              <div style="font-size:11px;font-weight:700;color:var(--ac);text-transform:uppercase;letter-spacing:.06em">Bulk Upload — Truck &amp; Trailer Pairs</div>
+              <a href="javascript:void(0)" onclick="downloadTripBulkTemplate()" style="font-size:12px;color:var(--hi);font-weight:600;text-decoration:underline">&#128229; Download Template (CSV)</a>
+            </div>
+            <div style="border:2px dashed var(--br);border-radius:10px;padding:30px;text-align:center;margin-bottom:16px">
+              <div style="font-size:36px;margin-bottom:8px">&#128196;</div>
+              <div style="font-size:13px;color:var(--t2);margin-bottom:10px">Upload a CSV file with <b>Truck</b> and <b>Trailer</b> columns — one pair per row</div>
+              <button class="btn bp" onclick="document.getElementById('at-bulk-file').click()" style="font-size:12px">Choose File</button>
+              <input type="file" id="at-bulk-file" accept=".csv" style="display:none" onchange="handleTripBulkFile(this)">
+            </div>
+            <div id="at-bulk-results"></div>
           </div>
         </div>
 
@@ -2207,9 +2233,9 @@ td,td *{font-size:13px!important;font-family:'Inter',sans-serif!important}
   <div class="modal" style="max-width:760px">
     <div class="modalhead"><div class="modaltitle">&#128101; User Management</div><button class="modalclose" onclick="closeModal('usermgmtmodal')">&#10005;</button></div>
     <div class="modalbody" style="padding:0">
-      <div style="padding:14px 22px;border-bottom:1px solid var(--br);display:flex;justify-content:space-between;align-items:center">
-        <div style="font-size:13px;color:var(--t2)">Manage who can access the Trip System, and their role</div>
-        <button class="btn bp" style="font-size:12px" onclick="openAddUser()">+ Add User</button>
+      <div style="padding:12px 22px;background:#fffaf0;border-bottom:1px solid #fde68a;display:flex;align-items:center;gap:10px">
+        <span style="font-size:18px">&#128274;</span>
+        <div style="font-size:12.5px;color:#92400e"><b>Read-only.</b> User permissions are now managed in <b>Workshop → User Management</b>, since Trips and Workshop share the same login accounts. This view shows what each user currently has, but changes must be made from Workshop.</div>
       </div>
       <div id="usertable" style="padding:16px 22px;max-height:60vh;overflow-y:auto"></div>
     </div>
@@ -2218,6 +2244,7 @@ td,td *{font-size:13px!important;font-family:'Inter',sans-serif!important}
 
 <!-- ADD/EDIT USER MODAL -->
 <div class="overlay hidden" id="addusermodal">
+
   <div class="modal" style="max-width:640px">
     <div class="modalhead"><div class="modaltitle" id="addusertitle">Add User</div><button class="modalclose" onclick="closeModal('addusermodal')">&#10005;</button></div>
     <div class="modalbody" style="max-height:75vh;overflow-y:auto"><div class="formgrid">
@@ -2311,7 +2338,7 @@ td,td *{font-size:13px!important;font-family:'Inter',sans-serif!important}
 <script>
 // AK TRANSPORT — TRIP MANAGEMENT SYSTEM — Phase 1 Foundation
 // Replace the API constant below with your deployed Apps Script URL
-const API = 'https://script.google.com/macros/s/AKfycby5s7ubsF96RlmQ_cYsZy4Yk3KjgJMdKYIBTQAbxpDY5vl6WAPhX0T8dnWV3GxKzZM7HA/exec';
+const API = 'https://script.google.com/macros/s/AKfycbxdL2IHUGaBRxkAojj_zRInrEJq-N_F16xeOz3AZnXp9XlrMxlNFNu9ZLYlOJYQbqCClw/exec';
 
 var CURRENT_USER=null,SETTINGS={},ROUTES=[],TRUCK_FUEL=[],PERMIT_RATES=[],TRANSPORT_RATES=[],
     RELEASES=[],TRIPS=[],PERMITS=[],RENEWAL_REQS=[],AGENT_ACCOUNTS=[],AGENT_EXPENSES=[],
@@ -2344,7 +2371,26 @@ function toast(msg,type){
 }
 
 // ── MODAL ──
-function closeModal(id){var el=id?document.getElementById(id):document.querySelector('.overlay:not(.hidden)');if(el)el.classList.add('hidden');editingId=null;}
+function closeModal(id){var el=id?document.getElementById(id):document.querySelector('.overlay:not(.hidden)');if(el){el.classList.add('hidden');if(el.id==='docpreview-modal'){var f=document.getElementById('docpreview-frame');if(f)f.src='about:blank';}}editingId=null;}
+
+// Shows a document in-page via Google Drive's official embeddable
+// preview URL. Returns false to cancel the link's default navigation.
+function _driveEmbedUrl(url) {
+  if (!url) return url;
+  var m = url.match(/\/file\/d\/([a-zA-Z0-9_-]+)/) || url.match(/[?&]id=([a-zA-Z0-9_-]+)/);
+  if (m && m[1]) return 'https://drive.google.com/file/d/' + m[1] + '/preview';
+  return url;
+}
+function previewDoc(url) {
+  if (!url) return false;
+  var frame = document.getElementById('docpreview-frame');
+  var dlLink = document.getElementById('docpreview-download');
+  if (frame)  frame.src = _driveEmbedUrl(url);
+  if (dlLink) dlLink.href = url;
+  var modal = document.getElementById('docpreview-modal');
+  if (modal) modal.classList.remove('hidden');
+  return false;
+}
 
 // Forces a direct download of a stored document (permit, letter, POD,
 // etc.) instead of navigating to Google Drive's own viewer page.
@@ -3176,9 +3222,9 @@ function renderTrips(){
       + '<td style="font-family:monospace;font-size:11px">'+excessCell+'</td>'
       + '<td>'+tripStatusBadge(effectiveTripStatus(t))+'</td>'
       + '<td style="font-size:11px;white-space:nowrap">'
-        +(t.loadDocUrl?'<a href="'+esc(t.loadDocUrl)+'" target="_blank" onclick="return downloadDoc(this.href)" style="color:var(--hi);font-weight:600">&#128229; Load</a>':'<span style="color:var(--t3)">—</span>')
+        +(t.loadDocUrl?'<a href="'+esc(t.loadDocUrl)+'" target="_blank" style="color:var(--t2);font-size:11px;margin-right:4px" title="Preview" onclick="return previewDoc(this.href)">&#128065;</a><a href="'+esc(t.loadDocUrl)+'" target="_blank" onclick="return downloadDoc(this.href)" style="color:var(--hi);font-weight:600">&#128229; Load</a>':'<span style="color:var(--t3)">—</span>')
         +' '
-        +(t.offDocUrl?'<a href="'+esc(t.offDocUrl)+'" target="_blank" onclick="return downloadDoc(this.href)" style="color:var(--hi);font-weight:600">&#128228; Offload</a>':'<span style="color:var(--t3)">—</span>')
+        +(t.offDocUrl?'<a href="'+esc(t.offDocUrl)+'" target="_blank" style="color:var(--t2);font-size:11px;margin-right:4px" title="Preview" onclick="return previewDoc(this.href)">&#128065;</a><a href="'+esc(t.offDocUrl)+'" target="_blank" onclick="return downloadDoc(this.href)" style="color:var(--hi);font-weight:600">&#128228; Offload</a>':'<span style="color:var(--t3)">—</span>')
       + '</td>'
       + '<td class="td-actions">'
       + '<button class="actbtn e" style="position:relative" onclick="tripEditClick(\''+t.id+'\')" title="'+(isCompleted?'Password required':'Edit')+'">Edit'+lockE+'</button> '
@@ -3296,7 +3342,7 @@ function bulkEditTrips() {
         +'<input type="file" id="bet-loaddoc-file-'+n+'" accept=".pdf,.jpg,.jpeg,.png" style="display:none" onchange="_handleAtDocSelect(this,\'bet-loaddoc-'+n+'\')">'
         +'<span id="bet-loaddoc-'+n+'-label">&#128206; '+(t.loadDocUrl?'Replace loading document':'Click to attach loading document')+'</span>'
         +'</div>'
-        +(t.loadDocUrl?'<a href="'+esc(t.loadDocUrl)+'" target="_blank" onclick="return downloadDoc(this.href)" class="btn bg" style="font-size:12px;padding:8px 12px;text-decoration:none">&#128065;</a>':'')
+        +(t.loadDocUrl?'<a href="'+esc(t.loadDocUrl)+'" target="_blank" style="color:var(--t2);font-size:12px;margin-right:6px" title="Preview" onclick="return previewDoc(this.href)">&#128065;</a><a href="'+esc(t.loadDocUrl)+'" target="_blank" onclick="return downloadDoc(this.href)" class="btn bg" style="font-size:12px;padding:8px 12px;text-decoration:none">&#128229;</a>':'')
         +'</div></div>'
       +'<div id="bet-offdoc-wrap-'+n+'" style="'+(t.offloadingDate?'':'display:none')+'">'
         +'<label style="font-size:10px;font-weight:700;color:#515154;text-transform:uppercase;letter-spacing:.06em">Offloading Document *</label>'
@@ -3305,7 +3351,7 @@ function bulkEditTrips() {
         +'<input type="file" id="bet-offdoc-file-'+n+'" accept=".pdf,.jpg,.jpeg,.png" style="display:none" onchange="_handleAtDocSelect(this,\'bet-offdoc-'+n+'\')">'
         +'<span id="bet-offdoc-'+n+'-label">&#128206; '+(t.offDocUrl?'Replace offloading document':'Click to attach offloading document')+'</span>'
         +'</div>'
-        +(t.offDocUrl?'<a href="'+esc(t.offDocUrl)+'" target="_blank" onclick="return downloadDoc(this.href)" class="btn bg" style="font-size:12px;padding:8px 12px;text-decoration:none">&#128065;</a>':'')
+        +(t.offDocUrl?'<a href="'+esc(t.offDocUrl)+'" target="_blank" style="color:var(--t2);font-size:12px;margin-right:6px" title="Preview" onclick="return previewDoc(this.href)">&#128065;</a><a href="'+esc(t.offDocUrl)+'" target="_blank" onclick="return downloadDoc(this.href)" class="btn bg" style="font-size:12px;padding:8px 12px;text-decoration:none">&#128229;</a>':'')
         +'</div></div>'
       +'</div>'
       +'<div style="display:grid;grid-template-columns:150px 150px 130px 110px 110px 130px 160px 1fr;gap:14px">'
@@ -4303,7 +4349,6 @@ var PERMIT_APPLIES={'Insurance':'Horse/Trailer','LATRA':'Horse/Trailer','C28':'T
 // modal shell, but under different permissions. Gating lives on the
 // individual callers instead.
 function _openPermitModalShell(){
-  editingId=null;
   document.getElementById('pmt-vehicle').innerHTML='<option value="">Select vehicle...</option>'+VEHICLES.map(function(v){return '<option>'+esc(v.plate||v.code)+'</option>';}).join('');
   ['pmt-vtype','pmt-type','pmt-applies','pmt-expiry','pmt-amount','pmt-receipt','pmt-docurl','pmt-notes'].forEach(function(id){var el=document.getElementById(id);if(el)el.value='';});
   document.getElementById('pmt-date').value=today();
@@ -4312,6 +4357,7 @@ function _openPermitModalShell(){
   document.getElementById('modal-permit').classList.remove('hidden');
 }
 function openAddPermit(){
+  editingId = null;
   _openPermitModalShell();
 }
 function onPermitVehicleChange(){var plate=document.getElementById('pmt-vehicle').value;var veh=VEHICLES.find(function(v){return(v.plate||v.code||'')===plate;});document.getElementById('pmt-vtype').value=veh?(veh.vehicleType||''):'';}
@@ -4387,7 +4433,7 @@ function renderPermits(){
     else{sb='<span class="sb sGR">✅ Valid</span>';dd='<span style="color:#166534;font-weight:600">'+daysLeft+' days</span>';}
     if(!p.documentUrl)sb+=' <span class="sb sAM" style="font-size:9px">📄 No Doc</span>';
     return '<tr><td><b>'+esc(p.vehicle)+'</b></td><td>'+esc(p.vehicleType)+'</td><td>'+esc(p.permitType)+'</td><td>'+fmtDate(p.paymentDate)+'</td><td>'+fmtDate(p.expiryDate)+'</td><td>'+dd+'</td>'
-      +'<td>'+(p.documentUrl?'<a href="'+p.documentUrl+'" target="_blank" onclick="return downloadDoc(this.href)" style="color:var(--hi);font-size:11px">📥 Download</a>':'<span style="color:var(--t3);font-size:11px">No doc</span>')+'</td>'
+      +'<td>'+(p.documentUrl?'<a href="'+p.documentUrl+'" target="_blank" style="color:var(--t2);font-size:11px;margin-right:6px" title="Preview" onclick="return previewDoc(this.href)">&#128065;</a><a href="'+p.documentUrl+'" target="_blank" onclick="return downloadDoc(this.href)" style="color:var(--hi);font-size:11px">📥 Download</a>':'<span style="color:var(--t3);font-size:11px">No doc</span>')+'</td>'
       +'<td>'+sb+'</td><td><button class="actbtn e" onclick="toast(\'Edit permit — Phase 2\',\'in\')">Edit</button></td></tr>';
   }).join('');
 }
@@ -4714,6 +4760,24 @@ window.addEventListener('load',function(){initLogin();var el=document.getElement
 
 
 
+<!-- DOCUMENT PREVIEW — shows a document in-page using Google Drive's
+     official embeddable preview endpoint (different from the raw file
+     URL, which Google blocks from being embedded elsewhere). -->
+<div class="overlay hidden" id="docpreview-modal" style="padding:20px">
+  <div class="modal" style="max-width:900px;width:100%;height:88vh;display:flex;flex-direction:column">
+    <div class="modalhead">
+      <div class="modaltitle">&#128065; Document Preview</div>
+      <div style="display:flex;gap:8px;align-items:center">
+        <a id="docpreview-download" href="#" onclick="return downloadDoc(this.href)" style="color:rgba(255,255,255,.85);font-size:12px;text-decoration:underline">Download instead</a>
+        <button class="modalclose" onclick="closeModal('docpreview-modal')">&#10005;</button>
+      </div>
+    </div>
+    <div style="flex:1;overflow:hidden;background:#f5f5f7">
+      <iframe id="docpreview-frame" src="about:blank" style="width:100%;height:100%;border:none"></iframe>
+    </div>
+  </div>
+</div>
+
 <!-- PRINTABLE RENEWAL LETTER (hidden, for printing) -->
 <div id="print-area" style="display:none">
   <div id="print-content"></div>
@@ -4914,7 +4978,7 @@ window.renderPermits = function() {
     } else if (inRenewal) {
       docCell = '<span style="color:var(--t3);font-size:11px">—</span>';
     } else if (p && p.documentUrl) {
-      docCell = '<a href="'+esc(p.documentUrl)+'" target="_blank" onclick="return downloadDoc(this.href)" style="color:var(--hi);font-size:11px">📥 Download</a>';
+      docCell = '<a href="'+esc(p.documentUrl)+'" target="_blank" style="color:var(--t2);font-size:11px;margin-right:6px" title="Preview" onclick="return previewDoc(this.href)">&#128065;</a><a href="'+esc(p.documentUrl)+'" target="_blank" onclick="return downloadDoc(this.href)" style="color:var(--hi);font-size:11px">📥 Download</a>';
     } else if (p) {
       docCell = '<span style="color:#b91c1c;font-size:11px">⚠ Missing</span>';
     } else {
@@ -5246,7 +5310,7 @@ function openPermitHistory(vehicle, type) {
         + '<td style="font-weight:600;color:' + (exp<today_dt?'#b91c1c':exp<=warn_dt?'#92400e':'#166534') + '">' + fmtDate(p.expiryDate) + '</td>'
         + '<td style="font-family:monospace;color:var(--ac)">TZS ' + fmt(p.amountPaid) + '</td>'
         + '<td>' + esc(p.receiptNo||'—') + '</td>'
-        + '<td>' + (p.documentUrl ? '<a href="'+esc(p.documentUrl)+'" target="_blank" onclick="return downloadDoc(this.href)" style="color:var(--hi);font-weight:600;font-size:12px">📥 Download</a>' : '<button class="actbtn" style="font-size:11px;color:#0071e3;border-color:#0071e3" onclick="openDocUpload(\''+p.id+'\',this)">⬆ Upload Doc</button>') + '</td>'
+        + '<td>' + (p.documentUrl ? '<a href="'+esc(p.documentUrl)+'" target="_blank" style="color:var(--t2);font-weight:600;font-size:12px;margin-right:8px" title="Preview" onclick="return previewDoc(this.href)">&#128065;</a><a href="'+esc(p.documentUrl)+'" target="_blank" onclick="return downloadDoc(this.href)" style="color:var(--hi);font-weight:600;font-size:12px">📥 Download</a>' : '<button class="actbtn" style="font-size:11px;color:#0071e3;border-color:#0071e3" onclick="openDocUpload(\''+p.id+'\',this)">⬆ Upload Doc</button>') + '</td>'
         + '<td>' + sb + '</td>'
         + '<td><button class="actbtn e" onclick="closeModal(\'modal-permit-history\');editPermitRecord(\'' + p.id + '\')">Edit</button></td>'
         + '</tr>';
@@ -5316,6 +5380,7 @@ function openVehiclePermitOverview(plate) {
 var _pendingPermitVehicle = '';
 var _pendingPermitType    = '';
 function openAddPermitForSlot(vehicle, type) {
+  editingId = null;
   _pendingPermitVehicle = vehicle;
   _pendingPermitType    = type;
   _openPermitModalShell();
@@ -5332,6 +5397,7 @@ function openAddPermitForSlot(vehicle, type) {
   }, 50);
 }
 function openAddPermitForVehicle(plate) {
+  editingId = null;
   _pendingPermitVehicle = plate || _currentPermitHistoryVehicle || _currentVehiclePermitPlate;
   _pendingPermitType    = _currentPermitHistoryType || '';
   _openPermitModalShell();
@@ -6915,7 +6981,7 @@ async function _uploadReleaseDocIfNeeded(prefix, refLabel) {
 }
 function _letterViewLink(url) {
   return url
-    ? '<a href="'+esc(url)+'" target="_blank" onclick="return downloadDoc(this.href)" style="color:var(--hi);font-weight:600;font-size:11px">&#128229; Download Letter</a>'
+    ? '<a href="'+esc(url)+'" target="_blank" style="color:var(--t2);font-weight:600;font-size:11px;margin-right:6px" title="Preview" onclick="return previewDoc(this.href)">&#128065;</a><a href="'+esc(url)+'" target="_blank" onclick="return downloadDoc(this.href)" style="color:var(--hi);font-weight:600;font-size:11px">&#128229; Download Letter</a>'
     : '<span style="color:var(--t3);font-size:11px">No letter</span>';
 }
 
@@ -8319,7 +8385,6 @@ var PERMIT_APPLIES={'Insurance':'Horse/Trailer','LATRA':'Horse/Trailer','C28':'T
 // modal shell, but under different permissions. Gating lives on the
 // individual callers instead.
 function _openPermitModalShell(){
-  editingId=null;
   document.getElementById('pmt-vehicle').innerHTML='<option value="">Select vehicle...</option>'+VEHICLES.map(function(v){return '<option>'+esc(v.plate||v.code)+'</option>';}).join('');
   ['pmt-vtype','pmt-type','pmt-applies','pmt-expiry','pmt-amount','pmt-receipt','pmt-docurl','pmt-notes'].forEach(function(id){var el=document.getElementById(id);if(el)el.value='';});
   document.getElementById('pmt-date').value=today();
@@ -8328,6 +8393,7 @@ function _openPermitModalShell(){
   document.getElementById('modal-permit').classList.remove('hidden');
 }
 function openAddPermit(){
+  editingId = null;
   _openPermitModalShell();
 }
 function onPermitVehicleChange(){var plate=document.getElementById('pmt-vehicle').value;var veh=VEHICLES.find(function(v){return(v.plate||v.code||'')===plate;});document.getElementById('pmt-vtype').value=veh?(veh.vehicleType||''):'';}
@@ -8403,7 +8469,7 @@ function renderPermits(){
     else{sb='<span class="sb sGR">✅ Valid</span>';dd='<span style="color:#166534;font-weight:600">'+daysLeft+' days</span>';}
     if(!p.documentUrl)sb+=' <span class="sb sAM" style="font-size:9px">📄 No Doc</span>';
     return '<tr><td><b>'+esc(p.vehicle)+'</b></td><td>'+esc(p.vehicleType)+'</td><td>'+esc(p.permitType)+'</td><td>'+fmtDate(p.paymentDate)+'</td><td>'+fmtDate(p.expiryDate)+'</td><td>'+dd+'</td>'
-      +'<td>'+(p.documentUrl?'<a href="'+p.documentUrl+'" target="_blank" onclick="return downloadDoc(this.href)" style="color:var(--hi);font-size:11px">📥 Download</a>':'<span style="color:var(--t3);font-size:11px">No doc</span>')+'</td>'
+      +'<td>'+(p.documentUrl?'<a href="'+p.documentUrl+'" target="_blank" style="color:var(--t2);font-size:11px;margin-right:6px" title="Preview" onclick="return previewDoc(this.href)">&#128065;</a><a href="'+p.documentUrl+'" target="_blank" onclick="return downloadDoc(this.href)" style="color:var(--hi);font-size:11px">📥 Download</a>':'<span style="color:var(--t3);font-size:11px">No doc</span>')+'</td>'
       +'<td>'+sb+'</td><td><button class="actbtn e" onclick="toast(\'Edit permit — Phase 2\',\'in\')">Edit</button></td></tr>';
   }).join('');
 }
@@ -8914,7 +8980,7 @@ window.renderPermits = function() {
     } else if (inRenewal) {
       docCell = '<span style="color:var(--t3);font-size:11px">—</span>';
     } else if (p && p.documentUrl) {
-      docCell = '<a href="'+esc(p.documentUrl)+'" target="_blank" onclick="return downloadDoc(this.href)" style="color:var(--hi);font-size:11px">📥 Download</a>';
+      docCell = '<a href="'+esc(p.documentUrl)+'" target="_blank" style="color:var(--t2);font-size:11px;margin-right:6px" title="Preview" onclick="return previewDoc(this.href)">&#128065;</a><a href="'+esc(p.documentUrl)+'" target="_blank" onclick="return downloadDoc(this.href)" style="color:var(--hi);font-size:11px">📥 Download</a>';
     } else if (p) {
       docCell = '<span style="color:#b91c1c;font-size:11px">⚠ Missing</span>';
     } else {
@@ -9246,7 +9312,7 @@ function openPermitHistory(vehicle, type) {
         + '<td style="font-weight:600;color:' + (exp<today_dt?'#b91c1c':exp<=warn_dt?'#92400e':'#166534') + '">' + fmtDate(p.expiryDate) + '</td>'
         + '<td style="font-family:monospace;color:var(--ac)">TZS ' + fmt(p.amountPaid) + '</td>'
         + '<td>' + esc(p.receiptNo||'—') + '</td>'
-        + '<td>' + (p.documentUrl ? '<a href="'+esc(p.documentUrl)+'" target="_blank" onclick="return downloadDoc(this.href)" style="color:var(--hi);font-weight:600;font-size:12px">📥 Download</a>' : '<button class="actbtn" style="font-size:11px;color:#0071e3;border-color:#0071e3" onclick="openDocUpload(\''+p.id+'\',this)">⬆ Upload Doc</button>') + '</td>'
+        + '<td>' + (p.documentUrl ? '<a href="'+esc(p.documentUrl)+'" target="_blank" style="color:var(--t2);font-weight:600;font-size:12px;margin-right:8px" title="Preview" onclick="return previewDoc(this.href)">&#128065;</a><a href="'+esc(p.documentUrl)+'" target="_blank" onclick="return downloadDoc(this.href)" style="color:var(--hi);font-weight:600;font-size:12px">📥 Download</a>' : '<button class="actbtn" style="font-size:11px;color:#0071e3;border-color:#0071e3" onclick="openDocUpload(\''+p.id+'\',this)">⬆ Upload Doc</button>') + '</td>'
         + '<td>' + sb + '</td>'
         + '<td><button class="actbtn e" onclick="closeModal(\'modal-permit-history\');editPermitRecord(\'' + p.id + '\')">Edit</button></td>'
         + '</tr>';
@@ -9316,6 +9382,7 @@ function openVehiclePermitOverview(plate) {
 var _pendingPermitVehicle = '';
 var _pendingPermitType    = '';
 function openAddPermitForSlot(vehicle, type) {
+  editingId = null;
   _pendingPermitVehicle = vehicle;
   _pendingPermitType    = type;
   _openPermitModalShell();
@@ -9332,6 +9399,7 @@ function openAddPermitForSlot(vehicle, type) {
   }, 50);
 }
 function openAddPermitForVehicle(plate) {
+  editingId = null;
   _pendingPermitVehicle = plate || _currentPermitHistoryVehicle || _currentVehiclePermitPlate;
   _pendingPermitType    = _currentPermitHistoryType || '';
   _openPermitModalShell();
@@ -11442,7 +11510,7 @@ function _expenseTable(expenses) {
           +'<td style="padding:8px 10px">'+esc(e.expenseType||'—')+'</td>'
           +'<td style="padding:8px 10px;font-family:monospace;color:#b91c1c">TZS '+fmt(e.amountTZS||0)+'</td>'
           +'<td style="padding:8px 10px">'+esc(e.settlementMethod||'—')+'</td>'
-          +'<td style="padding:8px 10px">'+(e.letterUrl?'<a href="'+esc(e.letterUrl)+'" target="_blank" onclick="return downloadDoc(this.href)" style="color:var(--hi);font-size:11px">📥 Download</a>':'<span style="color:var(--t3);font-size:11px">No letter</span>')+'</td>'
+          +'<td style="padding:8px 10px">'+(e.letterUrl?'<a href="'+esc(e.letterUrl)+'" target="_blank" style="color:var(--t2);font-size:11px;margin-right:6px" title="Preview" onclick="return previewDoc(this.href)">&#128065;</a><a href="'+esc(e.letterUrl)+'" target="_blank" onclick="return downloadDoc(this.href)" style="color:var(--hi);font-size:11px">📥 Download</a>':'<span style="color:var(--t3);font-size:11px">No letter</span>')+'</td>'
           +'<td style="padding:8px 10px">'+drvExpStatusBadge(e.status)+'</td>'
           +'<td style="padding:8px 10px;white-space:nowrap">'
           +(e.status!=='SETTLED'?'<button class="actbtn e" onclick="openDriverExpSettlement(\''+e.id+'\')">Settle</button>':'')
@@ -13992,7 +14060,7 @@ var RF_TABS = {
         esc(r.horse||(t?t.horse:'')||'—'),
         esc(t?t.driver||'—':'—'),
         esc(r.destination||(t?t.destination:'')||'—'),
-        'TZS '+fmt(r.amountTZS||0), '—',
+        'TZS '+fmt(r.amountTZS||0), (r.bonusTZS>0 ? 'TZS '+fmt(r.bonusTZS) : '—'),
         esc(r.requestedBy||'—'), r.status, ''
       ];
     }
@@ -14425,15 +14493,16 @@ function rfPrintSelected() {
     addexp:  'ADDITIONAL EXPENSE REQUEST FORM'
   };
   var fuelPrice = parseFloat(SETTINGS.fuelPrice||3200);
-  var totalAmtTZS=0, totalAmtUSD=0, totalLtrs=0;
+  var totalAmtTZS=0, totalAmtUSD=0, totalLtrs=0, totalBonusTZS=0;
   var rows = recs.map(function(r){
     var t   = r.tripId ? TRIPS.find(function(x){ return x.id===r.tripId; }) : null;
     var drv = t ? DRIVERS.find(function(d){ return d.name===t.driver; }) : null;
-    totalAmtTZS += parseFloat(r.amountTZS||0);
-    totalAmtUSD += parseFloat(r.amountUSD||0);
-    totalLtrs   += parseFloat(r.litres||0);
+    totalAmtTZS   += parseFloat(r.amountTZS||0);
+    totalAmtUSD   += parseFloat(r.amountUSD||0);
+    totalLtrs     += parseFloat(r.litres||0);
+    totalBonusTZS += parseFloat(r.bonusTZS||0);
     if (_rfCurrentTab==='fuel') return '<tr><td>'+esc(r.releaseNo||'—')+'</td><td><b>'+esc(r.tripNo||'—')+'</b></td><td>'+esc(r.horse||'—')+'</td><td>'+esc(t?t.driver||'—':'—')+'</td><td>'+esc(drv?drv.licenseNo||'—':'—')+'</td><td>'+esc(t?t.destination||'—':'—')+'</td><td style="text-align:right">'+fmt(r.litres||0)+'</td><td style="text-align:right;font-weight:700">'+fmt(r.amountTZS||0)+'</td></tr>';
-    if (_rfCurrentTab==='mileage') return '<tr><td>'+esc(r.releaseNo||'—')+'</td><td><b>'+esc(r.tripNo||'—')+'</b></td><td>'+esc(r.horse||'—')+'</td><td>'+esc(t?t.driver||'—':'—')+'</td><td>'+esc(t?t.destination||'—':'—')+'</td><td style="text-align:right;font-weight:700">'+fmt(r.amountTZS||0)+'</td><td style="text-align:right">___________</td></tr>';
+    if (_rfCurrentTab==='mileage') return '<tr><td>'+esc(r.releaseNo||'—')+'</td><td><b>'+esc(r.tripNo||'—')+'</b></td><td>'+esc(r.horse||'—')+'</td><td>'+esc(t?t.driver||'—':'—')+'</td><td>'+esc(t?t.destination||'—':'—')+'</td><td style="text-align:right;font-weight:700">'+fmt(r.amountTZS||0)+'</td><td style="text-align:right">'+(r.bonusTZS>0?fmt(r.bonusTZS):'—')+'</td></tr>';
     if (_rfCurrentTab==='toll')    return '<tr><td>'+esc(r.releaseNo||'—')+'</td><td><b>'+esc(r.tripNo||'—')+'</b></td><td>'+esc(r.horse||'—')+'</td><td>'+esc(t?t.driver||'—':'—')+'</td><td>'+esc(t?t.destination||'—':'—')+'</td><td style="text-align:right;font-weight:700">'+fmtDec(r.amountUSD||0)+'</td></tr>';
     if (_rfCurrentTab==='addexp')  return '<tr><td>'+esc(r.horse||'—')+'</td><td>'+esc(r.driver||'—')+'</td><td>'+esc(r.tripNo||'—')+'</td><td>'+esc(r.expenseType||'—')+'</td><td>'+esc(r.description||'—')+'</td><td>'+esc(r.supplier||'—')+'</td><td style="text-align:right">'+(r.qty?fmt(r.qty):'—')+'</td><td>'+esc(r.unit||'—')+'</td><td style="text-align:right;font-weight:700">'+fmt(r.amountTZS||0)+'</td><td>'+esc(r.chargeTo||'—')+'</td></tr>';
     return '<tr><td>'+esc(r.releaseNo||'—')+'</td><td><b>'+esc(r.tripNo||'—')+'</b></td><td>'+esc(r.horse||'—')+'</td><td>'+esc(t?t.driver||'—':'—')+'</td><td>'+esc(r.permitType||r.description||'—')+'</td><td>'+esc(t?t.destination||'—':'—')+'</td><td style="text-align:right;font-weight:700">'+fmt(r.amountTZS||0)+'</td><td>'+fmtDate(r.permitExpiry||'')+'</td></tr>';
@@ -14445,13 +14514,19 @@ function rfPrintSelected() {
     permit:  '<tr><th>Release</th><th>Trip No</th><th>Truck</th><th>Driver</th><th>Permit Type</th><th>Destination</th><th style="text-align:right">Amount (TZS)</th><th>Expiry</th></tr>',
     addexp:  '<tr><th>Truck</th><th>Driver</th><th>Trip</th><th>Type</th><th>Description</th><th>Supplier</th><th style="text-align:right">Qty</th><th>Unit</th><th style="text-align:right">Amount (TZS)</th><th>Charge To</th></tr>'
   };
-  var colspanMap={fuel:6,mileage:5,toll:5,permit:6,addexp:8};
-  var footerAmt = _rfCurrentTab==='toll'
-    ? '<td style="text-align:right">USD '+fmtDec(totalAmtUSD)+'</td>'
-    : '<td style="text-align:right">TZS '+fmt(totalAmtTZS)+'</td>'+(totalLtrs>0?'<td></td>':'');
-  if (_rfCurrentTab==='mileage') footerAmt+='<td></td>';
-  if (_rfCurrentTab==='permit')  footerAmt+='<td></td>';
-  if (_rfCurrentTab==='addexp')  footerAmt+='<td></td>';
+  var tfootRows;
+  if (_rfCurrentTab === 'toll') {
+    tfootRows = '<tr><td colspan="5" style="text-align:right">TOTAL</td><td style="text-align:right">USD '+fmtDec(totalAmtUSD)+'</td></tr>';
+  } else if (_rfCurrentTab === 'fuel') {
+    tfootRows = '<tr><td colspan="6" style="text-align:right">TOTAL</td><td style="text-align:right">'+fmt(totalLtrs)+' Ltrs</td><td style="text-align:right">TZS '+fmt(totalAmtTZS)+'</td></tr>';
+  } else if (_rfCurrentTab === 'mileage') {
+    tfootRows = '<tr><td colspan="5" style="text-align:right">TOTAL</td><td style="text-align:right">TZS '+fmt(totalAmtTZS)+'</td><td style="text-align:right">TZS '+fmt(totalBonusTZS)+'</td></tr>'
+      + '<tr><td colspan="5" style="text-align:right">GRAND TOTAL (incl. Bonus)</td><td colspan="2" style="text-align:right">TZS '+fmt(totalAmtTZS+totalBonusTZS)+'</td></tr>';
+  } else if (_rfCurrentTab === 'permit') {
+    tfootRows = '<tr><td colspan="6" style="text-align:right">TOTAL</td><td style="text-align:right">TZS '+fmt(totalAmtTZS)+'</td><td></td></tr>';
+  } else {
+    tfootRows = '<tr><td colspan="8" style="text-align:right">TOTAL</td><td style="text-align:right">TZS '+fmt(totalAmtTZS)+'</td><td></td></tr>';
+  }
   var extraInfo = _rfCurrentTab==='fuel'?'<p style="font-size:11px;color:#444;margin-bottom:10px">Fuel Price: TZS '+fmt(fuelPrice)+'/ltr</p>':_rfCurrentTab==='toll'?'<p style="font-size:11px;color:#444;margin-bottom:10px">Border: Tunduma &nbsp;&nbsp; Rate: USD '+fmtDec(parseFloat(SETTINGS.tollTunduma||330))+' per truck</p>':'';
   var reqby = recs[0] ? recs[0].requestedBy||'' : '';
   _printFormWindow({
@@ -14460,7 +14535,7 @@ function rfPrintSelected() {
     extraInfoHtml: extraInfo,
     theadHtml: theadMap[_rfCurrentTab],
     tbodyHtml: rows,
-    tfootHtml: '<tr><td colspan="'+colspanMap[_rfCurrentTab]+'" style="text-align:right">TOTAL</td>'+footerAmt+'</tr>',
+    tfootHtml: tfootRows,
     sigLeftLabel: 'Requested By',
     sigLeftName: reqby,
     sigRightLabel: 'Approved By'
@@ -14758,7 +14833,7 @@ async function doChangePwd() {
   try { sessionStorage.setItem('ak_trip_user', JSON.stringify(CURRENT_USER)); } catch(e){}
 
   try {
-    await callAPI('updateUser', {record: Object.assign({}, CURRENT_USER, {password:newPwd})});
+    await callAPI('updateUser', {record: {id: CURRENT_USER.id, username: CURRENT_USER.username, password: newPwd}});
     toast('Password changed successfully ✓','ok');
     closeModal('changepwdmodal');
   } catch(e) {
@@ -14799,7 +14874,7 @@ function renderUserTable() {
   var roleColors = {admin:'#0a2d6e',manager:'#0071e3',staff:'#166534',viewer:'#515154'};
   var html = '';
   if (!USERS || !USERS.length) {
-    html = '<div style="text-align:center;padding:30px;color:var(--t3)">No users found. Click + Add User.</div>';
+    html = '<div style="text-align:center;padding:30px;color:var(--t3)">No users found.</div>';
   } else {
     html = '<table style="width:100%;border-collapse:collapse;font-size:12px">'
       + '<thead><tr style="border-bottom:1px solid var(--br)">'
@@ -14808,34 +14883,24 @@ function renderUserTable() {
       + '<th style="padding:8px;text-align:left;color:var(--t2)">Trip Access</th>'
       + '<th style="padding:8px;text-align:left;color:var(--t2)">Trip Role</th>'
       + '<th style="padding:8px;text-align:left;color:var(--t2)">Status</th>'
-      + '<th style="padding:8px;text-align:left;color:var(--t2)">Actions</th>'
       + '</tr></thead><tbody>';
     USERS.forEach(function(u){
       var tripAccess = u.trip_access===true||u.trip_access==='true'||u.trip_access==='TRUE';
       var tripRole = String(u.trip_role||'viewer').toLowerCase();
       var color = roleColors[tripRole]||'#515154';
-      var isSelf = CURRENT_USER && u.username === CURRENT_USER.username;
       html += '<tr style="border-bottom:1px solid #f0f0f4">'
         + '<td style="padding:8px"><b>'+esc(u.name||'')+'</b></td>'
         + '<td style="padding:8px;font-family:monospace;color:var(--ac)">'+esc(u.username||'')+'</td>'
         + '<td style="padding:8px">'+(tripAccess?'<span class="sb sGR">Yes</span>':'<span class="sb sGY">No</span>')+'</td>'
         + '<td style="padding:8px">'+(tripAccess?('<span style="background:'+color+'18;color:'+color+';border:1px solid '+color+'40;padding:2px 8px;border-radius:4px;font-size:10px;font-weight:700;text-transform:uppercase">'+esc(tripRole)+'</span>'):'<span style="color:var(--t3)">—</span>')+'</td>'
         + '<td style="padding:8px"><span class="sb '+((u.status||'active')==='active'?'sGR':'sRD')+'">'+esc((u.status||'active').toUpperCase())+'</span></td>'
-        + '<td style="padding:8px">'
-          + '<button class="actbtn e ut-edit" data-uid="'+esc(u.id)+'">&#9998;</button> '
-          + (isSelf?'':'<button class="actbtn d ut-del" data-uid="'+esc(u.id)+'">&#128465;</button>')
-        + '</td></tr>';
+        + '</tr>';
     });
     html += '</tbody></table>';
   }
   var tbl = document.getElementById('usertable');
   tbl.innerHTML = html;
-  tbl.onclick = function(ev){
-    var btn = ev.target.closest('button'); if (!btn) return;
-    var uid = btn.getAttribute('data-uid'); if (!uid) return;
-    if (btn.classList.contains('ut-edit')) openEditUser(uid);
-    else if (btn.classList.contains('ut-del')) deleteTripUser(uid);
-  };
+  tbl.onclick = null;
 }
 
 function onTripAccessToggle() {
@@ -14852,97 +14917,24 @@ function updateTripRolePreview() {
   document.getElementById('u_trip_role_preview').innerHTML = TRIP_ROLE_DESCRIPTIONS[role] || '';
 }
 
+// User creation/editing/deletion is disabled on the Trips side — these
+// now only exist as safe no-op stubs (in case anything old still
+// references them) so nothing can accidentally write to shared user
+// data from here. Manage users from Workshop → User Management instead.
 function openAddUser() {
-  editingTripUser = null;
-  document.getElementById('addusertitle').textContent = 'Add New User';
-  document.getElementById('u_name').value = '';
-  document.getElementById('u_username').value = '';
-  document.getElementById('u_password').value = '';
-  document.getElementById('u_status').value = 'active';
-  document.getElementById('u_trip_access').checked = true;
-  document.getElementById('u_trip_role').value = 'staff';
-  document.getElementById('u_module_perms').innerHTML = buildModulePermsHTML();
-  document.getElementById('u_pnl_perms').innerHTML = buildPnlPermsHTML();
-  setModulePermPreset('staff');
-  onTripAccessToggle(); updateTripRolePreview();
-  document.getElementById('u_trip_role').onchange = function(){ updateTripRolePreview(); setModulePermPreset(this.value); };
-  document.getElementById('addusermodal').classList.remove('hidden');
-  setTimeout(function(){ document.getElementById('u_name').focus(); }, 80);
+  toast('User management has moved to Workshop → User Management','er');
 }
 
 function openEditUser(id) {
-  var u = USERS.find(function(x){ return x.id === id; });
-  if (!u) return;
-  editingTripUser = id;
-  document.getElementById('addusertitle').textContent = 'Edit User';
-  document.getElementById('u_name').value = u.name || '';
-  document.getElementById('u_username').value = u.username || '';
-  document.getElementById('u_password').value = u.password || '';
-  document.getElementById('u_status').value = u.status || 'active';
-  document.getElementById('u_trip_access').checked = u.trip_access===true||u.trip_access==='true'||u.trip_access==='TRUE';
-  document.getElementById('u_trip_role').value = String(u.trip_role||'viewer').toLowerCase();
-  document.getElementById('u_module_perms').innerHTML = buildModulePermsHTML();
-  document.getElementById('u_pnl_perms').innerHTML = buildPnlPermsHTML();
-  applyUserPermsToForm(u);
-  onTripAccessToggle(); updateTripRolePreview();
-  document.getElementById('u_trip_role').onchange = function(){ updateTripRolePreview(); setModulePermPreset(this.value); };
-  document.getElementById('addusermodal').classList.remove('hidden');
+  toast('User management has moved to Workshop → User Management','er');
 }
 
 async function saveUser() {
-  var name = document.getElementById('u_name').value.trim();
-  var username = document.getElementById('u_username').value.trim();
-  var password = document.getElementById('u_password').value;
-  var status = document.getElementById('u_status').value;
-  var tripAccess = document.getElementById('u_trip_access').checked;
-  var tripRole = document.getElementById('u_trip_role').value;
-  if (!name||!username||!password) { toast('Name, username and password are required','er'); return; }
-  var dup = USERS.find(function(u){ return (u.username||'').toLowerCase()===username.toLowerCase() && u.id!==editingTripUser; });
-  if (dup) { toast('Username already exists','er'); return; }
-
-  var data = {
-    name: name, username: username, password: password, status: status,
-    trip_access: tripAccess, trip_role: tripRole
-  };
-  collectModulePermsFromForm(data, tripAccess);
-
-  var btn = document.querySelector('#addusermodal .btn.bp');
-  if (btn) { btn.disabled = true; btn.textContent = 'Saving...'; }
-
-  try {
-    if (editingTripUser) {
-      data.id = editingTripUser;
-      var i = USERS.findIndex(function(u){ return u.id===editingTripUser; });
-      if (i>=0) USERS[i] = Object.assign({}, USERS[i], data);
-      await callAPI('updateUser', {record: Object.assign({}, USERS[i>=0?i:0], data)});
-      toast('User updated ✓','ok');
-    } else {
-      var res = await callAPI('addUser', {record: data});
-      data.id = res && res.id ? res.id : (uuid());
-      USERS.push(data);
-      toast('User added ✓','ok');
-    }
-    closeModal('addusermodal');
-    renderUserTable();
-  } catch(e) {
-    toast('Error: '+e.message,'er');
-  } finally {
-    if (btn) { btn.disabled = false; btn.textContent = '💾 Save User'; }
-  }
+  toast('User management has moved to Workshop → User Management','er');
 }
 
 async function deleteTripUser(id) {
-  if (!confirm('Delete this user? They will lose all access immediately.')) return;
-  var bk = USERS.find(function(u){ return u.id===id; });
-  USERS = USERS.filter(function(u){ return u.id!==id; });
-  renderUserTable();
-  try {
-    await callAPI('deleteUser', {id: id});
-    toast('User deleted ✓','ok');
-  } catch(e) {
-    toast('Delete failed: '+e.message,'er');
-    if (bk) { USERS.push(bk); renderUserTable(); }
-  }
+  toast('User management has moved to Workshop → User Management','er');
 }
 
 console.log('Phase 14 — User Management loaded ✓');
@@ -15024,7 +15016,7 @@ window.renderReleases = function() {
       +'<td style="text-align:center;color:#d97706;font-weight:600">'+remaining+'</td>'
       +'<td>'+_assignmentStatusBadge(assigned, total)+'</td>'
       +'<td>'+_deliveryStatusBadge(assignedTrips, assigned, total)+'</td>'
-      +'<td>'+(r.docUrl?'<a href="'+esc(r.docUrl)+'" target="_blank" onclick="return downloadDoc(this.href)" style="color:var(--hi);font-weight:600;font-size:11px">&#128229; Download</a>':'<span style="color:var(--t3);font-size:11px">—</span>')+'</td>'
+      +'<td>'+(r.docUrl?'<a href="'+esc(r.docUrl)+'" target="_blank" style="color:var(--t2);font-weight:600;font-size:11px;margin-right:6px" title="Preview" onclick="return previewDoc(this.href)">&#128065;</a><a href="'+esc(r.docUrl)+'" target="_blank" onclick="return downloadDoc(this.href)" style="color:var(--hi);font-weight:600;font-size:11px">&#128229; Download</a>':'<span style="color:var(--t3);font-size:11px">—</span>')+'</td>'
       +'<td class="td-actions">'+editBtn+' '+delBtn+'</td>'
       +'</tr>';
   }).join('');
@@ -15268,7 +15260,7 @@ function _doBulkEditReleases(ids) {
       +'<input type="file" id="rbe-doc-file-'+idx+'" accept=".pdf,.jpg,.jpeg,.png" style="display:none" onchange="_handleLetterSelect(this,\'rbe-doc-'+idx+'\')">'
       +'<span id="rbe-doc-label-'+idx+'">&#128206; '+(r.docUrl?'Replace attached document':'Click to attach release document')+'</span>'
       +'</div>'
-      +(r.docUrl?'<a href="'+esc(r.docUrl)+'" target="_blank" onclick="return downloadDoc(this.href)" class="btn bg" style="font-size:12px;padding:8px 14px;text-decoration:none">&#128229; Download Current</a>':'')
+      +(r.docUrl?'<a href="'+esc(r.docUrl)+'" target="_blank" style="color:var(--ac);font-size:12px;margin-right:10px" title="Preview" onclick="return previewDoc(this.href)">&#128065; Preview</a><a href="'+esc(r.docUrl)+'" target="_blank" onclick="return downloadDoc(this.href)" class="btn bg" style="font-size:12px;padding:8px 14px;text-decoration:none">&#128229; Download Current</a>':'')
       +'</div></div>'
       +'</div>';
 
@@ -15633,11 +15625,13 @@ function updateBudgetSelection() {
   var all = document.querySelectorAll('.budget-trip-check');
   var checked = document.querySelectorAll('.budget-trip-check:checked').length;
   var reqBtn = document.getElementById('budget-request-btn');
+  var bonusBtn = document.getElementById('budget-bonus-btn');
   var prtBtn = document.getElementById('budget-print-btn');
   var countEl= document.getElementById('budget-selected-count');
   var allCb  = document.getElementById('budget-all-check');
   if(allCb) allCb.checked = all.length > 0 && checked === all.length;
   if(reqBtn) reqBtn.style.display = checked > 0 ? 'inline-flex' : 'none';
+  if(bonusBtn) bonusBtn.style.display = (checked > 0 && canModule('trip','edit')) ? 'inline-flex' : 'none';
   if(prtBtn) prtBtn.style.display = checked > 0 ? 'inline-flex' : 'none';
   if(countEl) countEl.textContent = checked > 0 ? checked + ' trip' + (checked!==1?'s':'') + ' selected' : '';
   // Handle select-all per release
@@ -15730,6 +15724,98 @@ function openBulkRequest() {
     +'<button class="btn bp" style="background:#166534" onclick="submitBulkRequest(true)">&#128424; Submit &amp; Print</button>'
     +'</div></div>';
   document.body.appendChild(modal);
+}
+
+// ── SET DRIVER BONUS (Mileage) ──────────────────────────────────────
+function openSetBonus() {
+  var selectedTrips = getSelectedBudgetTrips();
+  if (!selectedTrips.length) { toast('Select at least one trip first','er'); return; }
+
+  var rows = selectedTrips.map(function(t){
+    var mReq = FUEL_REQUESTS.filter(function(r){
+      return r.tripId === t.id && r.requestType === 'MILEAGE' && r.status !== 'REJECTED';
+    }).sort(function(a,b){ return new Date(b.requestedAt||0) - new Date(a.requestedAt||0); })[0];
+    return {t: t, req: mReq};
+  });
+  var eligible = rows.filter(function(r){ return !!r.req; });
+  var skipped  = rows.length - eligible.length;
+
+  if (!eligible.length) {
+    toast('None of the selected trips have a Mileage request yet — request Mileage first','er');
+    return;
+  }
+
+  var existing = document.getElementById('modal-set-bonus');
+  if (existing) existing.remove();
+
+  var modal = document.createElement('div');
+  modal.id = 'modal-set-bonus';
+  modal.className = 'overlay';
+  modal.innerHTML =
+    '<div class="modal" style="max-width:720px;max-height:85vh;display:flex;flex-direction:column">'
+    + '<div class="modalhead"><div class="modaltitle">&#128176; Set Driver Bonus</div><button class="modalclose" onclick="closeModal(\'modal-set-bonus\')">&#10005;</button></div>'
+    + '<div class="modalbody" style="overflow-y:auto;flex:1">'
+    + (skipped ? '<div style="background:#fffaf0;border:1px solid #fde68a;border-radius:8px;padding:8px 12px;font-size:12px;color:#92400e;margin-bottom:14px">'+skipped+' selected trip'+(skipped!==1?'s':'')+' skipped — no Mileage request exists yet for '+(skipped!==1?'them':'it')+'.</div>' : '')
+    + '<table style="width:100%;border-collapse:collapse"><thead><tr style="background:var(--ac)">'
+      + '<th style="padding:8px 10px;color:#fff;font-size:11px;text-align:left">Truck</th>'
+      + '<th style="padding:8px 10px;color:#fff;font-size:11px;text-align:left">Driver</th>'
+      + '<th style="padding:8px 10px;color:#fff;font-size:11px;text-align:left">Destination</th>'
+      + '<th style="padding:8px 10px;color:#fff;font-size:11px;text-align:right">Mileage (TZS)</th>'
+      + '<th style="padding:8px 10px;color:#fff;font-size:11px;text-align:right">Bonus (TZS)</th>'
+      + '<th style="padding:8px 10px;color:#fff;font-size:11px;text-align:left">Status</th>'
+    + '</tr></thead><tbody>'
+    + eligible.map(function(r, idx){
+        return '<tr style="border-bottom:1px solid #f0f0f4">'
+          + '<td style="padding:8px 10px;font-size:12px;font-weight:600">'+esc(r.t.horse||'—')+'</td>'
+          + '<td style="padding:8px 10px;font-size:12px">'+esc(r.t.driver||'—')+'</td>'
+          + '<td style="padding:8px 10px;font-size:12px">'+esc(r.t.destination||'—')+'</td>'
+          + '<td style="padding:8px 10px;font-size:12px;text-align:right">TZS '+fmt(r.req.amountTZS||0)+'</td>'
+          + '<td style="padding:8px 10px;text-align:right"><input type="number" min="0" class="sb-bonus-input" data-req-id="'+r.req.id+'" value="'+(r.req.bonusTZS||'')+'" placeholder="0" style="width:110px;text-align:right;padding:6px 8px;border:1.5px solid var(--br);border-radius:6px;font-size:12px"></td>'
+          + '<td style="padding:8px 10px">'+shortageStatusBadge((r.req.status||'').toUpperCase()==='APPROVED'?'PAID':(r.req.status||'').toUpperCase()==='PENDING'?'UNPAID':'')+'</td>'
+          + '</tr>';
+      }).join('')
+    + '</tbody></table>'
+    + '</div>'
+    + '<div class="modalfoot"><button class="btn bg" onclick="closeModal(\'modal-set-bonus\')">Cancel</button><button class="btn bp" id="sb-save-btn" onclick="saveDriverBonuses()">&#128190; Save Bonuses</button></div>'
+    + '</div>';
+  document.body.appendChild(modal);
+  modal.classList.remove('hidden');
+}
+
+async function saveDriverBonuses() {
+  if (!canModule('trip','edit')) { toast('You do not have permission to set driver bonuses','er'); return; }
+  var inputs = Array.from(document.querySelectorAll('.sb-bonus-input'));
+  var btn = document.getElementById('sb-save-btn');
+  if (btn) { if (btn.disabled) return; btn.disabled = true; btn.textContent = 'Saving...'; }
+
+  var updated = 0, reopened = 0, errors = 0;
+  for (var i = 0; i < inputs.length; i++) {
+    var input = inputs[i];
+    var reqId = input.dataset.reqId;
+    var newBonus = parseFloat(input.value) || 0;
+    var req = FUEL_REQUESTS.find(function(r){ return r.id === reqId; });
+    if (!req) continue;
+    var oldBonus = parseFloat(req.bonusTZS || 0);
+    if (newBonus === oldBonus) continue; // unchanged — skip silently
+
+    req.bonusTZS = newBonus;
+    if ((req.status||'').toUpperCase() === 'APPROVED') {
+      req.status = 'PENDING';
+      req.approvedBy = ''; req.approvedAt = '';
+      reopened++;
+    }
+    try {
+      await callAPI('updateFuelRequest', {record: req});
+      updated++;
+    } catch(e) { errors++; }
+  }
+
+  if (!updated && !errors) { toast('No changes to save','er'); if (btn) { btn.disabled=false; btn.innerHTML='&#128190; Save Bonuses'; } return; }
+
+  toast(updated + ' bonus' + (updated!==1?'es':'') + ' saved' + (reopened ? ' · ' + reopened + ' sent back to Pending for re-approval' : '') + (errors ? ' · ' + errors + ' failed' : '') + ' ✓', 'ok');
+  updateBadges();
+  if (currentView === 'reqforms') { window.renderRfTab(); }
+  closeModal('modal-set-bonus');
 }
 
 async function submitBulkRequest(andPrint) {
@@ -15889,15 +15975,18 @@ function executePrintForms() {
       var amt=dist*mileageRate;
       var mReq=FUEL_REQUESTS.filter(function(x){return x.tripId===t.id&&x.requestType==='MILEAGE';})[0];
       if(mReq&&mReq.requestedBy) reqby=mReq.requestedBy;
-      return {t:t,dist:dist,amt:amt};
+      var bonus = mReq ? parseFloat(mReq.bonusTZS||0) : 0;
+      return {t:t,dist:dist,amt:amt,bonus:bonus};
     });
     var totalAmt=rows.reduce(function(s,r){return s+r.amt;},0);
+    var totalBonus=rows.reduce(function(s,r){return s+r.bonus;},0);
     allHtml+='<div class="pf-page">'+hdr('MILEAGE REQUEST FORM')
       +tableWrap('<thead><tr><th>Release</th><th>Trip No</th><th>Truck</th><th>Driver</th><th>Destination</th><th>KM</th><th>Amount (TZS)</th><th>Bonus (TZS)</th></tr></thead>'
       +'<tbody>'+rows.map(function(r){
-        return '<tr><td>'+esc(r.t.releaseNo||'—')+'</td><td><b>'+esc(r.t.tripNo)+'</b></td><td>'+esc(r.t.horse)+'</td><td>'+esc(r.t.driver||'—')+'</td><td>'+esc(r.t.destination)+'</td><td>'+fmt(r.dist)+'</td><td>'+fmt(r.amt)+'</td><td></td></tr>';
+        return '<tr><td>'+esc(r.t.releaseNo||'—')+'</td><td><b>'+esc(r.t.tripNo)+'</b></td><td>'+esc(r.t.horse)+'</td><td>'+esc(r.t.driver||'—')+'</td><td>'+esc(r.t.destination)+'</td><td>'+fmt(r.dist)+'</td><td>'+fmt(r.amt)+'</td><td>'+(r.bonus>0?fmt(r.bonus):'—')+'</td></tr>';
       }).join('')+'</tbody>'
-      +'<tfoot><tr><td colspan="6" style="text-align:right">TOTAL</td><td>TZS '+fmt(totalAmt)+'</td><td></td></tr></tfoot>')
+      +'<tfoot><tr><td colspan="6" style="text-align:right">TOTAL</td><td>TZS '+fmt(totalAmt)+'</td><td>TZS '+fmt(totalBonus)+'</td></tr>'
+      +'<tr><td colspan="6" style="text-align:right">GRAND TOTAL (incl. Bonus)</td><td colspan="2">TZS '+fmt(totalAmt+totalBonus)+'</td></tr></tfoot>')
     +sigBlock(reqby)+'</div>';
   }
 
@@ -16092,6 +16181,10 @@ function _atFgArea(lbl, html) {
 function initAddTripsView() {
   _atLineCount = 0;
   _atRelease   = null;
+  _atBulkRows  = [];
+  switchAddTripsMode('single');
+  var bulkResultsEl = document.getElementById('at-bulk-results'); if (bulkResultsEl) bulkResultsEl.innerHTML = '';
+  var bulkFileEl = document.getElementById('at-bulk-file'); if (bulkFileEl) bulkFileEl.value = '';
 
   var sel = document.getElementById('at-release-sel');
   if (sel) {
@@ -16126,6 +16219,9 @@ function onAddTripsReleaseChange() {
   if (!rel) return;
   _atRelease    = rel;
   _atLineCount  = 0;
+  _atBulkRows   = [];
+  var bulkResultsEl = document.getElementById('at-bulk-results'); if (bulkResultsEl) bulkResultsEl.innerHTML = '';
+  var bulkFileEl = document.getElementById('at-bulk-file'); if (bulkFileEl) bulkFileEl.value = '';
 
   // Fill shared fields
   function setVal(id, val){ var el=document.getElementById(id); if(el) el.value = val||''; }
@@ -16442,6 +16538,190 @@ function updateAtSaveBtn() {
 }
 
 // ── SUBMIT ALL TRIPS ──────────────────────────────────────────────
+// ── BULK UPLOAD TRUCKS/TRAILERS ─────────────────────────────────────
+var _atBulkRows = []; // {rowNum, truck, trailer, valid, reason}
+
+function switchAddTripsMode(mode) {
+  var singleEl  = document.getElementById('at-single-mode');
+  var bulkEl    = document.getElementById('at-bulk-mode');
+  var singleBtn = document.getElementById('at-mode-single-btn');
+  var bulkBtn   = document.getElementById('at-mode-bulk-btn');
+  var saveBtn   = document.getElementById('at-save-btn');
+  if (mode === 'bulk') {
+    if (singleEl) singleEl.style.display = 'none';
+    if (bulkEl)   bulkEl.style.display   = '';
+    if (singleBtn) singleBtn.className = 'btn bg';
+    if (bulkBtn)   bulkBtn.className   = 'btn bp';
+    if (saveBtn)   saveBtn.style.display = 'none';
+  } else {
+    if (singleEl) singleEl.style.display = '';
+    if (bulkEl)   bulkEl.style.display   = 'none';
+    if (singleBtn) singleBtn.className = 'btn bp';
+    if (bulkBtn)   bulkBtn.className   = 'btn bg';
+    if (saveBtn)   saveBtn.style.display = '';
+  }
+}
+
+function downloadTripBulkTemplate() {
+  var csv  = 'Truck,Trailer\nT123ABC,T456DEF\n';
+  var blob = new Blob([csv], {type:'text/csv;charset=utf-8;'});
+  var a    = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'trip_bulk_upload_template.csv';
+  document.body.appendChild(a); a.click(); document.body.removeChild(a);
+  URL.revokeObjectURL(a.href);
+}
+
+function _parseCsvRows(text) {
+  return text.split(/\r\n|\n|\r/)
+    .filter(function(l){ return l.trim() !== ''; })
+    .map(function(l){ return l.split(',').map(function(c){ return c.trim().replace(/^"|"$/g,''); }); });
+}
+
+function handleTripBulkFile(input) {
+  var file = input.files[0];
+  if (!file) return;
+  if (!_atRelease) { toast('Select a Release first','er'); input.value=''; return; }
+  var reader = new FileReader();
+  reader.onload = function(e){
+    var rows = _parseCsvRows(e.target.result);
+    if (!rows.length) { toast('File appears to be empty','er'); return; }
+    var header = (rows[0][0]||'').toLowerCase();
+    if (header.indexOf('truck') >= 0) rows = rows.slice(1); // drop header row if present
+    if (!rows.length) { toast('No data rows found in file','er'); return; }
+    _validateBulkRows(rows);
+    _renderBulkResults();
+  };
+  reader.readAsText(file);
+  input.value = '';
+}
+
+function _validateBulkRows(rows) {
+  // Vehicles already used by other trips in this same release
+  var usedTrucks = {}, usedTrailers = {};
+  TRIPS.filter(function(t){ return t.releaseId === _atRelease.id; }).forEach(function(t){
+    if (t.horse)    usedTrucks[t.horse.toUpperCase()]     = t.tripNo;
+    if (t.trailer)  usedTrailers[t.trailer.toUpperCase()] = t.tripNo;
+  });
+
+  // Release truck limit — same check the one-by-one "Add Line" form
+  // already enforces, so bulk upload can't assign more trucks than the
+  // release actually calls for.
+  var totalSlots   = parseInt(_atRelease.noOfTrucks || 0);
+  var alreadyAssigned = TRIPS.filter(function(t){ return t.releaseId === _atRelease.id; }).length;
+  var slotsLeft = Math.max(0, totalSlots - alreadyAssigned);
+
+  _atBulkRows = rows.map(function(cols, idx){
+    var truck   = (cols[0]||'').trim().toUpperCase();
+    var trailer = (cols[1]||'').trim().toUpperCase();
+    var rowNum  = idx + 1;
+    var row = {rowNum: rowNum, truck: truck, trailer: trailer, valid: true, reason: ''};
+
+    if (!truck || !trailer) { row.valid=false; row.reason='Missing truck or trailer'; return row; }
+    var truckVeh = VEHICLES.find(function(v){ return (v.plate||v.code||'').toUpperCase() === truck; });
+    if (!truckVeh) { row.valid=false; row.reason='Truck "'+truck+'" not found in Vehicles'; return row; }
+    var trailerVeh = VEHICLES.find(function(v){ return (v.plate||v.code||'').toUpperCase() === trailer; });
+    if (!trailerVeh) { row.valid=false; row.reason='Trailer "'+trailer+'" not found in Vehicles'; return row; }
+    if (usedTrucks[truck])   { row.valid=false; row.reason='Truck already assigned to '+usedTrucks[truck]+' in this release'; return row; }
+    if (usedTrailers[trailer]) { row.valid=false; row.reason='Trailer already assigned to '+usedTrailers[trailer]+' in this release'; return row; }
+    if (slotsLeft <= 0) { row.valid=false; row.reason='Release limit reached ('+totalSlots+' truck'+(totalSlots!==1?'s':'')+' already assigned)'; return row; }
+
+    // Reserve within this same batch so later duplicate rows, and the
+    // release's remaining-slot count, get caught correctly too
+    usedTrucks[truck] = 'row ' + rowNum + ' (this upload)';
+    usedTrailers[trailer] = 'row ' + rowNum + ' (this upload)';
+    slotsLeft--;
+    return row;
+  });
+}
+
+function _renderBulkResults() {
+  var valid   = _atBulkRows.filter(function(r){ return r.valid; });
+  var invalid = _atBulkRows.filter(function(r){ return !r.valid; });
+
+  var html = '<div style="display:flex;gap:16px;margin-bottom:14px">'
+    + '<div style="background:#f0fdf4;border:1px solid #86efac;border-radius:8px;padding:10px 16px"><div style="font-size:11px;color:#166534;font-weight:700">READY TO CREATE</div><div style="font-size:22px;font-weight:800;color:#166534">'+valid.length+'</div></div>'
+    + (invalid.length ? '<div style="background:#fef2f2;border:1px solid #fca5a5;border-radius:8px;padding:10px 16px"><div style="font-size:11px;color:#b91c1c;font-weight:700">SKIPPED</div><div style="font-size:22px;font-weight:800;color:#b91c1c">'+invalid.length+'</div></div>' : '')
+    + '</div>';
+
+  html += '<table style="width:100%;border-collapse:collapse;margin-bottom:16px"><thead><tr style="background:var(--ac)">'
+    + '<th style="padding:8px 10px;color:#fff;font-size:11px;text-align:left">Row</th>'
+    + '<th style="padding:8px 10px;color:#fff;font-size:11px;text-align:left">Truck</th>'
+    + '<th style="padding:8px 10px;color:#fff;font-size:11px;text-align:left">Trailer</th>'
+    + '<th style="padding:8px 10px;color:#fff;font-size:11px;text-align:left">Status</th>'
+    + '</tr></thead><tbody>'
+    + _atBulkRows.map(function(r){
+        return '<tr style="border-bottom:1px solid #f0f0f4">'
+          + '<td style="padding:8px 10px;font-size:12px;color:var(--t3)">'+r.rowNum+'</td>'
+          + '<td style="padding:8px 10px;font-size:12px;font-weight:600">'+esc(r.truck||'—')+'</td>'
+          + '<td style="padding:8px 10px;font-size:12px;font-weight:600">'+esc(r.trailer||'—')+'</td>'
+          + '<td style="padding:8px 10px;font-size:12px">'+(r.valid
+              ? '<span class="sb sGR">&#10003; Ready</span>'
+              : '<span class="sb sRD">&#10005; '+esc(r.reason)+'</span>')+'</td>'
+          + '</tr>';
+      }).join('')
+    + '</tbody></table>';
+
+  if (valid.length) {
+    html += '<button class="btn bp" id="at-bulk-create-btn" onclick="createBulkTrips()">&#128190; Create '+valid.length+' Trip'+(valid.length!==1?'s':'')+'</button>';
+  }
+  var resultsEl = document.getElementById('at-bulk-results');
+  if (resultsEl) resultsEl.innerHTML = html;
+}
+
+async function createBulkTrips() {
+  if (!_atRelease) { toast('No release selected','er'); return; }
+  var valid = _atBulkRows.filter(function(r){ return r.valid; });
+  if (!valid.length) return;
+
+  var btn = document.getElementById('at-bulk-create-btn');
+  if (btn) { if (btn.disabled) return; btn.disabled = true; btn.textContent = 'Creating...'; }
+
+  var created = 0, errors = [];
+  for (var i = 0; i < valid.length; i++) {
+    var r = valid[i];
+    var rec = {
+      id: uuid(), tripNo: nextId(TRIPS, 'TRP-', 'tripNo'),
+      releaseId: _atRelease.id, releaseNo: _atRelease.releaseNo, releaseDate: _atRelease.releaseDate,
+      loadingDate: '', offloadingDate: '',
+      loadDocUrl: '', offDocUrl: '',
+      horse: r.truck, trailer: r.trailer, driver: '',
+      subTransporter: '',
+      customer: _atRelease.customer, loadingPoint: _atRelease.loadingPoint||'',
+      destination: _atRelease.destination, border: _atRelease.border||'', border2: _atRelease.border2||'',
+      product: _atRelease.product, tradeRef: _atRelease.tradeRef||'',
+      loadedQty: 0, offloadedQty: 0,
+      allowableLoss: '0.00', actualLoss: '0.00', excessLoss: '0.00',
+      status: 'WAITING TO LOAD'
+    };
+    try {
+      await callAPI('addTrip', {record: rec});
+      TRIPS.push(rec);
+      created++;
+    } catch(e) { errors.push(r.truck+'/'+r.trailer+': '+e.message); }
+  }
+
+  if (created > 0) {
+    if (_atRelease.status === 'OPEN') {
+      _atRelease.status = 'IN PROGRESS';
+      try { await callAPI('updateRelease', {record: _atRelease}); } catch(e){}
+    }
+    toast(created + ' trip' + (created!==1?'s':'') + ' created \u2713' + (errors.length ? ' \u00b7 ' + errors.length + ' failed' : ''), 'ok');
+    if (errors.length) toast(errors.join(', '), 'er');
+    updateBadges(); renderReleases(); renderBudget();
+    _atBulkRows = [];
+    var resultsEl = document.getElementById('at-bulk-results');
+    if (resultsEl) resultsEl.innerHTML = '';
+    var relId = _atRelease.id;
+    onAddTripsReleaseChange();
+    var sel = document.getElementById('at-release-sel');
+    if (sel) sel.value = relId;
+  } else {
+    toast('All trips failed to create', 'er');
+    if (btn) { btn.disabled = false; btn.innerHTML = '&#128190; Create ' + valid.length + ' Trip' + (valid.length!==1?'s':''); }
+  }
+}
+
 async function submitAllTrips() {
   if (!_atRelease) { toast('No release selected', 'er'); return; }
 
@@ -16836,6 +17116,7 @@ _p15GateEdit('release',  'bulkEditReleases');
 _p15GateEdit('release',  'editReleaseClick');
 _p15GateEdit('trip',     'bulkEditTrips');
 _p15GateEdit('trip',     'tripEditClick');
+_p15GateEdit('trip',     'openSetBonus');
 _p15GateEdit('deduction','editDeduction');
 _p15GateEdit('permit',   'editPermitRecord');
 
@@ -16900,6 +17181,7 @@ function applyModuleButtonVisibility() {
   toggle('[onclick*="openAddTrip()"]', canModule('trip','create'));
   toggle('[onclick*="tripDeleteClick("]', canModule('trip','delete'));
   toggle('[onclick*="bulkEditTrips()"]',   canModule('trip','edit'));
+  toggle('[onclick*="openSetBonus()"]',    canModule('trip','edit'));
   toggle('[onclick*="bulkDeleteTrips()"]', canModule('trip','delete'));
   toggle('[onclick*="tripEditClick("]',    canModule('trip','edit'));
   // Deduction

@@ -2099,7 +2099,7 @@ td,td *{font-size:13px!important;font-family:'Inter',sans-serif!important}
     <div class="modalhead"><div class="modaltitle">&#128737; Record Vehicle Permit</div><button class="modalclose" onclick="closeModal('modal-permit')">&#10005;</button></div>
     <div class="modalbody">
       <div class="formgrid">
-        <div class="formgroup"><label>Vehicle *</label><select id="pmt-vehicle" onchange="onPermitVehicleChange()"><option value="">Select vehicle...</option></select></div>
+        <div class="formgroup"><label>Vehicle *</label><div id="pmt-vehicle-wrap"></div></div>
         <div class="formgroup"><label>Vehicle Type</label><input type="text" id="pmt-vtype" readonly></div>
         <div class="formgroup"><label>Permit Type *</label>
           <select id="pmt-type" onchange="onPermitTypeChange()"><option value="">Select permit...</option><option>Insurance</option><option>LATRA</option><option>C28</option><option>Calibration</option></select>
@@ -2120,7 +2120,7 @@ td,td *{font-size:13px!important;font-family:'Inter',sans-serif!important}
         <div class="formgroup full"><label>Notes</label><textarea id="pmt-notes" placeholder="Notes..."></textarea></div>
       </div>
     </div>
-    <div class="modalfoot"><button class="btn bg" onclick="closeModal('modal-permit')">Cancel</button><button class="btn bp" onclick="savePermit()">&#128190; Save Permit</button></div>
+    <div class="modalfoot"><button class="btn bg" onclick="closeModal('modal-permit')">Cancel</button><button class="btn bp" id="pmt-save-btn" onclick="savePermit()">&#128190; Save Permit</button></div>
   </div>
 </div>
 
@@ -2338,7 +2338,7 @@ td,td *{font-size:13px!important;font-family:'Inter',sans-serif!important}
 <script>
 // AK TRANSPORT — TRIP MANAGEMENT SYSTEM — Phase 1 Foundation
 // Replace the API constant below with your deployed Apps Script URL
-const API = 'https://script.google.com/macros/s/AKfycbxdL2IHUGaBRxkAojj_zRInrEJq-N_F16xeOz3AZnXp9XlrMxlNFNu9ZLYlOJYQbqCClw/exec';
+const API = 'https://script.google.com/macros/s/AKfycbxJX1fr7NnxRXR7M-WJWYiqOcuBUhsT7oqDmw2NMLfmIwVqfUDERbXYh3wI4_0dWHzaMg/exec';
 
 var CURRENT_USER=null,SETTINGS={},ROUTES=[],TRUCK_FUEL=[],PERMIT_RATES=[],TRANSPORT_RATES=[],
     RELEASES=[],TRIPS=[],PERMITS=[],RENEWAL_REQS=[],AGENT_ACCOUNTS=[],AGENT_EXPENSES=[],
@@ -4349,11 +4349,12 @@ var PERMIT_APPLIES={'Insurance':'Horse/Trailer','LATRA':'Horse/Trailer','C28':'T
 // modal shell, but under different permissions. Gating lives on the
 // individual callers instead.
 function _openPermitModalShell(){
-  document.getElementById('pmt-vehicle').innerHTML='<option value="">Select vehicle...</option>'+VEHICLES.map(function(v){return '<option>'+esc(v.plate||v.code)+'</option>';}).join('');
+  document.getElementById('pmt-vehicle-wrap').innerHTML = _atSearchableField('pmt-vehicle', 'Search vehicle...', VEHICLES.map(function(v){ return v.plate||v.code||''; }).filter(Boolean), 'onPermitVehicleChange()');
   ['pmt-vtype','pmt-type','pmt-applies','pmt-expiry','pmt-amount','pmt-receipt','pmt-docurl','pmt-notes'].forEach(function(id){var el=document.getElementById(id);if(el)el.value='';});
   document.getElementById('pmt-date').value=today();
   var uBtn=document.getElementById('pmt-upload-btn'); if(uBtn){uBtn.disabled=false;uBtn.innerHTML='&#128228; Upload File';}
   var uStatus=document.getElementById('pmt-doc-status'); if(uStatus) uStatus.innerHTML='No document uploaded';
+  var sBtn=document.getElementById('pmt-save-btn'); if(sBtn){sBtn.disabled=false;sBtn.innerHTML='&#128190; Save Permit';}
   document.getElementById('modal-permit').classList.remove('hidden');
 }
 function openAddPermit(){
@@ -5425,10 +5426,8 @@ function editPermitRecord(id) {
   editingId = id;
   _openPermitModalShell();
   setTimeout(function(){
-    var vSel = document.getElementById('pmt-vehicle');
-    for (var i=0; i<vSel.options.length; i++) {
-      if (vSel.options[i].value === p.vehicle) { vSel.selectedIndex = i; break; }
-    }
+    var vInput = document.getElementById('pmt-vehicle');
+    if (vInput) vInput.value = p.vehicle || '';
     onPermitVehicleChange();
     document.getElementById('pmt-type').value    = p.permitType || '';
     onPermitTypeChange();
@@ -5451,6 +5450,8 @@ window.savePermit = async function() {
   var type    = document.getElementById('pmt-type').value;
   var date    = document.getElementById('pmt-date').value;
   if (!vehicle || !type || !date) { toast('Fill required fields','er'); return; }
+  var btn = document.getElementById('pmt-save-btn');
+  if (btn) { if (btn.disabled) return; btn.disabled = true; btn.innerHTML = 'Saving...'; }
   try {
     var record = {
       id:          editingId || uuid(),
@@ -5462,14 +5463,12 @@ window.savePermit = async function() {
       expiryDate:  document.getElementById('pmt-expiry').value,
       amountPaid:  document.getElementById('pmt-amount').value || 0,
       receiptNo:   document.getElementById('pmt-receipt').value.toUpperCase(),
-      documentUrl: '',
+      documentUrl: document.getElementById('pmt-docurl').value.trim(),
       status:      'ACTIVE',
       notes:       document.getElementById('pmt-notes').value,
       renewedBy:   CURRENT_USER ? (CURRENT_USER.name || CURRENT_USER.username) : ''
     };
     if (editingId) {
-      var existing = PERMITS.find(function(x){ return x.id === editingId; });
-      if (existing) record.documentUrl = existing.documentUrl || '';
       await callAPI('updatePermit', {record: record});
       var idx = PERMITS.findIndex(function(x){ return x.id === editingId; });
       if (idx >= 0) PERMITS[idx] = record;
@@ -5482,11 +5481,15 @@ window.savePermit = async function() {
     closeModal('modal-permit');
     updateBadges();
     renderPermits();
-    // Re-open history if we came from there
-    if (_currentPermitHistoryVehicle && _currentPermitHistoryType) {
-      setTimeout(function(){ openPermitHistory(_currentPermitHistoryVehicle, _currentPermitHistoryType); }, 200);
-    }
-  } catch(e) { toast('Error: ' + e.message, 'er'); }
+    // Always land on that vehicle's Permit History after saving —
+    // regardless of where the form was opened from — so the record
+    // just added/edited is immediately visible in context.
+    setTimeout(function(){ openPermitHistory(record.vehicle, record.permitType); }, 200);
+  } catch(e) {
+    toast('Error: ' + e.message, 'er');
+  } finally {
+    if (btn) { btn.disabled = false; btn.innerHTML = '&#128190; Save Permit'; }
+  }
 };
 
 // ── PHASE 2: DOCUMENT UPLOAD ──────────────────────────────────────
@@ -8385,11 +8388,12 @@ var PERMIT_APPLIES={'Insurance':'Horse/Trailer','LATRA':'Horse/Trailer','C28':'T
 // modal shell, but under different permissions. Gating lives on the
 // individual callers instead.
 function _openPermitModalShell(){
-  document.getElementById('pmt-vehicle').innerHTML='<option value="">Select vehicle...</option>'+VEHICLES.map(function(v){return '<option>'+esc(v.plate||v.code)+'</option>';}).join('');
+  document.getElementById('pmt-vehicle-wrap').innerHTML = _atSearchableField('pmt-vehicle', 'Search vehicle...', VEHICLES.map(function(v){ return v.plate||v.code||''; }).filter(Boolean), 'onPermitVehicleChange()');
   ['pmt-vtype','pmt-type','pmt-applies','pmt-expiry','pmt-amount','pmt-receipt','pmt-docurl','pmt-notes'].forEach(function(id){var el=document.getElementById(id);if(el)el.value='';});
   document.getElementById('pmt-date').value=today();
   var uBtn=document.getElementById('pmt-upload-btn'); if(uBtn){uBtn.disabled=false;uBtn.innerHTML='&#128228; Upload File';}
   var uStatus=document.getElementById('pmt-doc-status'); if(uStatus) uStatus.innerHTML='No document uploaded';
+  var sBtn=document.getElementById('pmt-save-btn'); if(sBtn){sBtn.disabled=false;sBtn.innerHTML='&#128190; Save Permit';}
   document.getElementById('modal-permit').classList.remove('hidden');
 }
 function openAddPermit(){
@@ -9427,10 +9431,8 @@ function editPermitRecord(id) {
   editingId = id;
   _openPermitModalShell();
   setTimeout(function(){
-    var vSel = document.getElementById('pmt-vehicle');
-    for (var i=0; i<vSel.options.length; i++) {
-      if (vSel.options[i].value === p.vehicle) { vSel.selectedIndex = i; break; }
-    }
+    var vInput = document.getElementById('pmt-vehicle');
+    if (vInput) vInput.value = p.vehicle || '';
     onPermitVehicleChange();
     document.getElementById('pmt-type').value    = p.permitType || '';
     onPermitTypeChange();
@@ -9453,6 +9455,8 @@ window.savePermit = async function() {
   var type    = document.getElementById('pmt-type').value;
   var date    = document.getElementById('pmt-date').value;
   if (!vehicle || !type || !date) { toast('Fill required fields','er'); return; }
+  var btn = document.getElementById('pmt-save-btn');
+  if (btn) { if (btn.disabled) return; btn.disabled = true; btn.innerHTML = 'Saving...'; }
   try {
     var record = {
       id:          editingId || uuid(),
@@ -9464,14 +9468,12 @@ window.savePermit = async function() {
       expiryDate:  document.getElementById('pmt-expiry').value,
       amountPaid:  document.getElementById('pmt-amount').value || 0,
       receiptNo:   document.getElementById('pmt-receipt').value.toUpperCase(),
-      documentUrl: '',
+      documentUrl: document.getElementById('pmt-docurl').value.trim(),
       status:      'ACTIVE',
       notes:       document.getElementById('pmt-notes').value,
       renewedBy:   CURRENT_USER ? (CURRENT_USER.name || CURRENT_USER.username) : ''
     };
     if (editingId) {
-      var existing = PERMITS.find(function(x){ return x.id === editingId; });
-      if (existing) record.documentUrl = existing.documentUrl || '';
       await callAPI('updatePermit', {record: record});
       var idx = PERMITS.findIndex(function(x){ return x.id === editingId; });
       if (idx >= 0) PERMITS[idx] = record;
@@ -9484,11 +9486,15 @@ window.savePermit = async function() {
     closeModal('modal-permit');
     updateBadges();
     renderPermits();
-    // Re-open history if we came from there
-    if (_currentPermitHistoryVehicle && _currentPermitHistoryType) {
-      setTimeout(function(){ openPermitHistory(_currentPermitHistoryVehicle, _currentPermitHistoryType); }, 200);
-    }
-  } catch(e) { toast('Error: ' + e.message, 'er'); }
+    // Always land on that vehicle's Permit History after saving —
+    // regardless of where the form was opened from — so the record
+    // just added/edited is immediately visible in context.
+    setTimeout(function(){ openPermitHistory(record.vehicle, record.permitType); }, 200);
+  } catch(e) {
+    toast('Error: ' + e.message, 'er');
+  } finally {
+    if (btn) { btn.disabled = false; btn.innerHTML = '&#128190; Save Permit'; }
+  }
 };
 
 // ── PHASE 2: DOCUMENT UPLOAD ──────────────────────────────────────

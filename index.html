@@ -65,9 +65,9 @@ input[type=date]::-webkit-calendar-picker-indicator{opacity:1;cursor:pointer}
 #tablearea{flex:1;min-height:0;overflow-x:auto;overflow-y:auto;padding:0 22px 20px}
 table{border-collapse:separate;border-spacing:0;table-layout:auto;min-width:100%}
 #tablearea table{border-radius:12px;overflow:hidden;border:1px solid var(--br);box-shadow:0 2px 8px rgba(0,0,0,.05)}
-th{background:var(--ac);color:#fff;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.1em;padding:10px 13px;white-space:nowrap;position:sticky;top:0;z-index:2;cursor:pointer;user-select:none}
+th{background:var(--ac);color:#fff;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.1em;padding:10px 13px;white-space:nowrap;position:sticky;top:0;z-index:2;cursor:pointer;user-select:none;text-align:left}
 th:hover{background:var(--ac2)}
-td{padding:10px 13px;border-bottom:1px solid #ebebed;font-size:13px;vertical-align:middle;color:var(--tx);background:#fff;white-space:nowrap}
+td{padding:10px 13px;border-bottom:1px solid #ebebed;font-size:13px;vertical-align:middle;color:var(--tx);background:#fff;white-space:nowrap;text-align:left}
 td.td-trunc{max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 td.td-actions{white-space:nowrap;width:1%;}
 tr:last-child td{border-bottom:none}
@@ -1036,8 +1036,10 @@ td,td *{font-size:13px!important;font-family:'Inter',sans-serif!important}
             <option value="">All Permit Types</option>
             <option id="pft-veh-opts">Insurance</option>
             <option>LATRA</option><option>C28</option><option>Calibration</option>
-            <option id="pft-trip-opts" style="display:none">COMESA</option>
-            <option style="display:none">Permit</option>
+            <option id="pft-trip-opts" style="display:none">COMESA Horse</option>
+            <option style="display:none">COMESA Trailer</option>
+            <option style="display:none">Permit Horse</option>
+            <option style="display:none">Permit Trailer</option>
             <option style="display:none">Carbon Tax</option>
             <option style="display:none">ZABS</option>
           </select>
@@ -4349,7 +4351,7 @@ function openDedDetail(deductionId, readOnly) {
 
 // ═══════════════════════════════════════════════════════════════════
 // ── PERMITS ──
-var PERMIT_DURATIONS={'Insurance':365,'LATRA':365,'C28':365,'Calibration':365};
+var PERMIT_DURATIONS={'Insurance':12,'LATRA':12,'C28':12,'Calibration':12,'ZABS':6,'COMESA Horse':6,'COMESA Trailer':6,'Carbon Tax':3,'Permit Horse':3,'Permit Trailer':3};
 var PERMIT_APPLIES={'Insurance':'Horse/Trailer','LATRA':'Horse/Trailer','C28':'Trailer only','Calibration':'Trailer only'};
 // Shared modal-opening logic — NOT permission-gated itself, since Create
 // entry points (openAddPermit, openAddPermitForSlot, openAddPermitForVehicle)
@@ -4358,6 +4360,15 @@ var PERMIT_APPLIES={'Insurance':'Horse/Trailer','LATRA':'Horse/Trailer','C28':'T
 // individual callers instead.
 function _openPermitModalShell(){
   document.getElementById('pmt-vehicle-wrap').innerHTML = _atSearchableField('pmt-vehicle', 'Search vehicle...', VEHICLES.map(function(v){ return v.plate||v.code||''; }).filter(Boolean), 'onPermitVehicleChange()');
+  // Permit Type options must match whichever tab (Vehicle Permits vs
+  // Trip Permits) the user currently has open — otherwise Trip Permit
+  // types (COMESA/Permit/Carbon Tax/ZABS) never appear as choices here.
+  var typeSel = document.getElementById('pmt-type');
+  if (typeSel) {
+    typeSel.innerHTML = _currentPermitTab === 'vehicle'
+      ? '<option value="">Select permit...</option><option>Insurance</option><option>LATRA</option><option>C28</option><option>Calibration</option>'
+      : '<option value="">Select permit...</option><option>COMESA Horse</option><option>COMESA Trailer</option><option>Permit Horse</option><option>Permit Trailer</option><option>Carbon Tax</option><option>ZABS</option>';
+  }
   ['pmt-vtype','pmt-type','pmt-applies','pmt-expiry','pmt-amount','pmt-receipt','pmt-docurl','pmt-notes'].forEach(function(id){var el=document.getElementById(id);if(el)el.value='';});
   document.getElementById('pmt-date').value=today();
   var uBtn=document.getElementById('pmt-upload-btn'); if(uBtn){uBtn.disabled=false;uBtn.innerHTML='&#128228; Upload File';}
@@ -4369,9 +4380,29 @@ function openAddPermit(){
   editingId = null;
   _openPermitModalShell();
 }
-function onPermitVehicleChange(){var plate=document.getElementById('pmt-vehicle').value;var veh=VEHICLES.find(function(v){return(v.plate||v.code||'')===plate;});document.getElementById('pmt-vtype').value=veh?(veh.vehicleType||''):'';}
+function onPermitVehicleChange(){
+  var plate=document.getElementById('pmt-vehicle').value;
+  var veh=VEHICLES.find(function(v){return(v.plate||v.code||'')===plate;});
+  var vtype=veh?(veh.vehicleType||''):'';
+  document.getElementById('pmt-vtype').value=vtype;
+  // On the Trip Permits tab, narrow the Permit Type choices to match
+  // the selected vehicle — Horse vehicles only see Horse-side types,
+  // Trailer vehicles only see Trailer-side types.
+  if (_currentPermitTab === 'trip') {
+    var typeSel = document.getElementById('pmt-type');
+    if (typeSel) {
+      var isTrailer = vtype.toLowerCase().includes('trailer');
+      var opts = isTrailer
+        ? '<option value="">Select permit...</option><option>COMESA Trailer</option><option>Permit Trailer</option><option>ZABS</option>'
+        : '<option value="">Select permit...</option><option>COMESA Horse</option><option>Permit Horse</option><option>Carbon Tax</option>';
+      var prevVal = typeSel.value;
+      typeSel.innerHTML = opts;
+      if (Array.from(typeSel.options).some(function(o){ return o.value === prevVal; })) typeSel.value = prevVal;
+    }
+  }
+}
 function onPermitTypeChange(){var type=document.getElementById('pmt-type').value;document.getElementById('pmt-applies').value=PERMIT_APPLIES[type]||'';calcPermitExpiry();}
-function calcPermitExpiry(){var date=document.getElementById('pmt-date').value;var type=document.getElementById('pmt-type').value;if(!date||!type)return;var days=PERMIT_DURATIONS[type]||365;var exp=new Date(date);exp.setDate(exp.getDate()+days);document.getElementById('pmt-expiry').value=exp.toISOString().split('T')[0];}
+function calcPermitExpiry(){var date=document.getElementById('pmt-date').value;var type=document.getElementById('pmt-type').value;if(!date||!type)return;var months=PERMIT_DURATIONS[type]||12;var exp=new Date(date);exp.setMonth(exp.getMonth()+months);exp.setDate(exp.getDate()-1);document.getElementById('pmt-expiry').value=exp.toISOString().split('T')[0];}
 async function uploadPmtDocFile() {
   var vehicle = document.getElementById('pmt-vehicle').value;
   var type    = document.getElementById('pmt-type').value;
@@ -4857,7 +4888,16 @@ function switchPermitTab(tab) {
   if (typeFilter) {
     typeFilter.innerHTML = tab === 'vehicle'
       ? '<option value="">All Permit Types</option><option>Insurance</option><option>LATRA</option><option>C28</option><option>Calibration</option>'
-      : '<option value="">All Permit Types</option><option>COMESA</option><option>Permit</option><option>Carbon Tax</option><option>ZABS</option>';
+      : '<option value="">All Permit Types</option><option>COMESA Horse</option><option>COMESA Trailer</option><option>Permit Horse</option><option>Permit Trailer</option><option>Carbon Tax</option><option>ZABS</option>';
+  }
+
+  // Also swap the "+ Record Permit" form's own Permit Type options,
+  // in case that form is open (or gets opened) right after switching
+  var recordTypeSel = document.getElementById('pmt-type');
+  if (recordTypeSel) {
+    recordTypeSel.innerHTML = tab === 'vehicle'
+      ? '<option value="">Select permit...</option><option>Insurance</option><option>LATRA</option><option>C28</option><option>Calibration</option>'
+      : '<option value="">Select permit...</option><option>COMESA Horse</option><option>COMESA Trailer</option><option>Permit Horse</option><option>Permit Trailer</option><option>Carbon Tax</option><option>ZABS</option>';
   }
 
   // Reset search and status filter
@@ -4938,24 +4978,24 @@ window.renderPermits = function() {
   }
   document.getElementById('permits-empty').classList.add('hidden');
 
-  var horseTypes   = _currentPermitTab === 'vehicle' ? ['Insurance','LATRA'] : ['COMESA','Permit','Carbon Tax'];
-  var trailerTypes = _currentPermitTab === 'vehicle' ? ['Insurance','LATRA','C28','Calibration'] : ['COMESA','Permit','ZABS'];
+  var horseTypes   = _currentPermitTab === 'vehicle' ? ['Insurance','LATRA'] : ['COMESA Horse','Permit Horse','Carbon Tax'];
+  var trailerTypes = _currentPermitTab === 'vehicle' ? ['Insurance','LATRA','C28','Calibration'] : ['COMESA Trailer','Permit Trailer','ZABS'];
 
   var filtered = [];
   vehicles.forEach(function(v) {
     var plate = v.plate || v.code || '';
     var isTrailer = (v.vehicleType||'').toLowerCase().includes('trailer');
     var types = isTrailer ? trailerTypes : horseTypes;
-    // For a vehicle that only qualifies here because it has an existing
-    // permit (not a proper Horse/Trailer classification), also include
-    // whatever permit type(s) it actually has on record — otherwise a
-    // saved C28/Calibration permit could still be invisible even after
-    // the vehicle itself starts showing up.
-    if (!isTrailer && (v.vehicleType||'').toUpperCase() !== 'HORSE') {
-      var actualTypes = PERMITS.filter(function(p){ return (p.vehicle||'').toUpperCase() === plate.toUpperCase(); })
-        .map(function(p){ return p.permitType; });
-      types = types.concat(actualTypes.filter(function(t){ return types.indexOf(t) < 0; }));
-    }
+    // Always also include whatever permit type(s) this vehicle actually
+    // has saved on record — regardless of how it's classified. The
+    // Permit Type dropdown offers every type (Horse and Trailer variants
+    // alike) no matter which vehicle is selected, so a real permit can
+    // easily end up with a type that doesn't match the vehicle's
+    // assumed Horse/Trailer category. Without this, a genuinely-saved
+    // permit could stay invisible purely because of that mismatch.
+    var actualTypes = PERMITS.filter(function(p){ return (p.vehicle||'').toUpperCase() === plate.toUpperCase(); })
+      .map(function(p){ return p.permitType; });
+    types = types.concat(actualTypes.filter(function(t){ return types.indexOf(t) < 0; }));
     types.forEach(function(type) {
       if (tfilt && type !== tfilt) return;
       var p       = getLatestPermit(plate, type);
@@ -5294,7 +5334,7 @@ async function savePermitUpload() {
       return (p.vehicle||'').toUpperCase()===vehicle.toUpperCase() && p.permitType===type;
     }).sort(function(a,b){ return new Date(b.paymentDate||0)-new Date(a.paymentDate||0); })[0];
 
-    var PERMIT_DURATIONS = {Insurance:365, LATRA:365, C28:365, Calibration:365};
+    var PERMIT_DURATIONS = {Insurance:12, LATRA:12, C28:12, Calibration:12, 'ZABS':6, 'COMESA Horse':6, 'COMESA Trailer':6, 'Carbon Tax':3, 'Permit Horse':3, 'Permit Trailer':3};
     var PERMIT_APPLIES   = {Insurance:'Horse/Trailer', LATRA:'Horse/Trailer', C28:'Trailer only', Calibration:'Trailer only'};
 
     var permitRecord = {
@@ -5522,6 +5562,15 @@ function editPermitRecord(id) {
     var vInput = document.getElementById('pmt-vehicle');
     if (vInput) vInput.value = p.vehicle || '';
     onPermitVehicleChange();
+    // If this permit's saved type doesn't match its vehicle's usual
+    // Horse/Trailer options (e.g. an older mismatched record), make
+    // sure it's still selectable rather than silently going blank.
+    var typeSelEdit = document.getElementById('pmt-type');
+    if (typeSelEdit && p.permitType && !Array.from(typeSelEdit.options).some(function(o){ return o.value === p.permitType; })) {
+      var extraOpt = document.createElement('option');
+      extraOpt.value = p.permitType; extraOpt.textContent = p.permitType;
+      typeSelEdit.appendChild(extraOpt);
+    }
     document.getElementById('pmt-type').value    = p.permitType || '';
     onPermitTypeChange();
     document.getElementById('pmt-date').value    = p.paymentDate || '';
@@ -8473,7 +8522,7 @@ function openDedDetail(deductionId, readOnly) {
 
 // ═══════════════════════════════════════════════════════════════════
 // ── PERMITS ──
-var PERMIT_DURATIONS={'Insurance':365,'LATRA':365,'C28':365,'Calibration':365};
+var PERMIT_DURATIONS={'Insurance':12,'LATRA':12,'C28':12,'Calibration':12,'ZABS':6,'COMESA Horse':6,'COMESA Trailer':6,'Carbon Tax':3,'Permit Horse':3,'Permit Trailer':3};
 var PERMIT_APPLIES={'Insurance':'Horse/Trailer','LATRA':'Horse/Trailer','C28':'Trailer only','Calibration':'Trailer only'};
 // Shared modal-opening logic — NOT permission-gated itself, since Create
 // entry points (openAddPermit, openAddPermitForSlot, openAddPermitForVehicle)
@@ -8482,6 +8531,15 @@ var PERMIT_APPLIES={'Insurance':'Horse/Trailer','LATRA':'Horse/Trailer','C28':'T
 // individual callers instead.
 function _openPermitModalShell(){
   document.getElementById('pmt-vehicle-wrap').innerHTML = _atSearchableField('pmt-vehicle', 'Search vehicle...', VEHICLES.map(function(v){ return v.plate||v.code||''; }).filter(Boolean), 'onPermitVehicleChange()');
+  // Permit Type options must match whichever tab (Vehicle Permits vs
+  // Trip Permits) the user currently has open — otherwise Trip Permit
+  // types (COMESA/Permit/Carbon Tax/ZABS) never appear as choices here.
+  var typeSel = document.getElementById('pmt-type');
+  if (typeSel) {
+    typeSel.innerHTML = _currentPermitTab === 'vehicle'
+      ? '<option value="">Select permit...</option><option>Insurance</option><option>LATRA</option><option>C28</option><option>Calibration</option>'
+      : '<option value="">Select permit...</option><option>COMESA Horse</option><option>COMESA Trailer</option><option>Permit Horse</option><option>Permit Trailer</option><option>Carbon Tax</option><option>ZABS</option>';
+  }
   ['pmt-vtype','pmt-type','pmt-applies','pmt-expiry','pmt-amount','pmt-receipt','pmt-docurl','pmt-notes'].forEach(function(id){var el=document.getElementById(id);if(el)el.value='';});
   document.getElementById('pmt-date').value=today();
   var uBtn=document.getElementById('pmt-upload-btn'); if(uBtn){uBtn.disabled=false;uBtn.innerHTML='&#128228; Upload File';}
@@ -8493,9 +8551,29 @@ function openAddPermit(){
   editingId = null;
   _openPermitModalShell();
 }
-function onPermitVehicleChange(){var plate=document.getElementById('pmt-vehicle').value;var veh=VEHICLES.find(function(v){return(v.plate||v.code||'')===plate;});document.getElementById('pmt-vtype').value=veh?(veh.vehicleType||''):'';}
+function onPermitVehicleChange(){
+  var plate=document.getElementById('pmt-vehicle').value;
+  var veh=VEHICLES.find(function(v){return(v.plate||v.code||'')===plate;});
+  var vtype=veh?(veh.vehicleType||''):'';
+  document.getElementById('pmt-vtype').value=vtype;
+  // On the Trip Permits tab, narrow the Permit Type choices to match
+  // the selected vehicle — Horse vehicles only see Horse-side types,
+  // Trailer vehicles only see Trailer-side types.
+  if (_currentPermitTab === 'trip') {
+    var typeSel = document.getElementById('pmt-type');
+    if (typeSel) {
+      var isTrailer = vtype.toLowerCase().includes('trailer');
+      var opts = isTrailer
+        ? '<option value="">Select permit...</option><option>COMESA Trailer</option><option>Permit Trailer</option><option>ZABS</option>'
+        : '<option value="">Select permit...</option><option>COMESA Horse</option><option>Permit Horse</option><option>Carbon Tax</option>';
+      var prevVal = typeSel.value;
+      typeSel.innerHTML = opts;
+      if (Array.from(typeSel.options).some(function(o){ return o.value === prevVal; })) typeSel.value = prevVal;
+    }
+  }
+}
 function onPermitTypeChange(){var type=document.getElementById('pmt-type').value;document.getElementById('pmt-applies').value=PERMIT_APPLIES[type]||'';calcPermitExpiry();}
-function calcPermitExpiry(){var date=document.getElementById('pmt-date').value;var type=document.getElementById('pmt-type').value;if(!date||!type)return;var days=PERMIT_DURATIONS[type]||365;var exp=new Date(date);exp.setDate(exp.getDate()+days);document.getElementById('pmt-expiry').value=exp.toISOString().split('T')[0];}
+function calcPermitExpiry(){var date=document.getElementById('pmt-date').value;var type=document.getElementById('pmt-type').value;if(!date||!type)return;var months=PERMIT_DURATIONS[type]||12;var exp=new Date(date);exp.setMonth(exp.getMonth()+months);exp.setDate(exp.getDate()-1);document.getElementById('pmt-expiry').value=exp.toISOString().split('T')[0];}
 async function uploadPmtDocFile() {
   var vehicle = document.getElementById('pmt-vehicle').value;
   var type    = document.getElementById('pmt-type').value;
@@ -8947,7 +9025,16 @@ function switchPermitTab(tab) {
   if (typeFilter) {
     typeFilter.innerHTML = tab === 'vehicle'
       ? '<option value="">All Permit Types</option><option>Insurance</option><option>LATRA</option><option>C28</option><option>Calibration</option>'
-      : '<option value="">All Permit Types</option><option>COMESA</option><option>Permit</option><option>Carbon Tax</option><option>ZABS</option>';
+      : '<option value="">All Permit Types</option><option>COMESA Horse</option><option>COMESA Trailer</option><option>Permit Horse</option><option>Permit Trailer</option><option>Carbon Tax</option><option>ZABS</option>';
+  }
+
+  // Also swap the "+ Record Permit" form's own Permit Type options,
+  // in case that form is open (or gets opened) right after switching
+  var recordTypeSel = document.getElementById('pmt-type');
+  if (recordTypeSel) {
+    recordTypeSel.innerHTML = tab === 'vehicle'
+      ? '<option value="">Select permit...</option><option>Insurance</option><option>LATRA</option><option>C28</option><option>Calibration</option>'
+      : '<option value="">Select permit...</option><option>COMESA Horse</option><option>COMESA Trailer</option><option>Permit Horse</option><option>Permit Trailer</option><option>Carbon Tax</option><option>ZABS</option>';
   }
 
   // Reset search and status filter
@@ -9028,24 +9115,24 @@ window.renderPermits = function() {
   }
   document.getElementById('permits-empty').classList.add('hidden');
 
-  var horseTypes   = _currentPermitTab === 'vehicle' ? ['Insurance','LATRA'] : ['COMESA','Permit','Carbon Tax'];
-  var trailerTypes = _currentPermitTab === 'vehicle' ? ['Insurance','LATRA','C28','Calibration'] : ['COMESA','Permit','ZABS'];
+  var horseTypes   = _currentPermitTab === 'vehicle' ? ['Insurance','LATRA'] : ['COMESA Horse','Permit Horse','Carbon Tax'];
+  var trailerTypes = _currentPermitTab === 'vehicle' ? ['Insurance','LATRA','C28','Calibration'] : ['COMESA Trailer','Permit Trailer','ZABS'];
 
   var filtered = [];
   vehicles.forEach(function(v) {
     var plate = v.plate || v.code || '';
     var isTrailer = (v.vehicleType||'').toLowerCase().includes('trailer');
     var types = isTrailer ? trailerTypes : horseTypes;
-    // For a vehicle that only qualifies here because it has an existing
-    // permit (not a proper Horse/Trailer classification), also include
-    // whatever permit type(s) it actually has on record — otherwise a
-    // saved C28/Calibration permit could still be invisible even after
-    // the vehicle itself starts showing up.
-    if (!isTrailer && (v.vehicleType||'').toUpperCase() !== 'HORSE') {
-      var actualTypes = PERMITS.filter(function(p){ return (p.vehicle||'').toUpperCase() === plate.toUpperCase(); })
-        .map(function(p){ return p.permitType; });
-      types = types.concat(actualTypes.filter(function(t){ return types.indexOf(t) < 0; }));
-    }
+    // Always also include whatever permit type(s) this vehicle actually
+    // has saved on record — regardless of how it's classified. The
+    // Permit Type dropdown offers every type (Horse and Trailer variants
+    // alike) no matter which vehicle is selected, so a real permit can
+    // easily end up with a type that doesn't match the vehicle's
+    // assumed Horse/Trailer category. Without this, a genuinely-saved
+    // permit could stay invisible purely because of that mismatch.
+    var actualTypes = PERMITS.filter(function(p){ return (p.vehicle||'').toUpperCase() === plate.toUpperCase(); })
+      .map(function(p){ return p.permitType; });
+    types = types.concat(actualTypes.filter(function(t){ return types.indexOf(t) < 0; }));
     types.forEach(function(type) {
       if (tfilt && type !== tfilt) return;
       var p       = getLatestPermit(plate, type);
@@ -9384,7 +9471,7 @@ async function savePermitUpload() {
       return (p.vehicle||'').toUpperCase()===vehicle.toUpperCase() && p.permitType===type;
     }).sort(function(a,b){ return new Date(b.paymentDate||0)-new Date(a.paymentDate||0); })[0];
 
-    var PERMIT_DURATIONS = {Insurance:365, LATRA:365, C28:365, Calibration:365};
+    var PERMIT_DURATIONS = {Insurance:12, LATRA:12, C28:12, Calibration:12, 'ZABS':6, 'COMESA Horse':6, 'COMESA Trailer':6, 'Carbon Tax':3, 'Permit Horse':3, 'Permit Trailer':3};
     var PERMIT_APPLIES   = {Insurance:'Horse/Trailer', LATRA:'Horse/Trailer', C28:'Trailer only', Calibration:'Trailer only'};
 
     var permitRecord = {
@@ -9612,6 +9699,15 @@ function editPermitRecord(id) {
     var vInput = document.getElementById('pmt-vehicle');
     if (vInput) vInput.value = p.vehicle || '';
     onPermitVehicleChange();
+    // If this permit's saved type doesn't match its vehicle's usual
+    // Horse/Trailer options (e.g. an older mismatched record), make
+    // sure it's still selectable rather than silently going blank.
+    var typeSelEdit = document.getElementById('pmt-type');
+    if (typeSelEdit && p.permitType && !Array.from(typeSelEdit.options).some(function(o){ return o.value === p.permitType; })) {
+      var extraOpt = document.createElement('option');
+      extraOpt.value = p.permitType; extraOpt.textContent = p.permitType;
+      typeSelEdit.appendChild(extraOpt);
+    }
     document.getElementById('pmt-type').value    = p.permitType || '';
     onPermitTypeChange();
     document.getElementById('pmt-date').value    = p.paymentDate || '';

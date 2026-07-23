@@ -4954,18 +4954,28 @@ window.renderPermits = function() {
     return {class:'sGR', icon:'✅', label:'Valid', days:daysLeft, blocked:false};
   }
 
+  // The full set of types that belong to THIS tab only — Vehicle
+  // Permits (Insurance/LATRA/C28/Calibration) and Trip Permits (the six
+  // Trip types) must never leak into each other.
+  var currentTabTypes = _currentPermitTab === 'vehicle'
+    ? ['Insurance','LATRA','C28','Calibration']
+    : ['COMESA Horse','COMESA Trailer','Permit Horse','Permit Trailer','Carbon Tax','ZABS'];
+
   // Group by vehicle
   var _plateShasPermit = {};
-  PERMITS.forEach(function(p){ if (p.vehicle) _plateShasPermit[p.vehicle.toUpperCase()] = true; });
+  PERMITS.forEach(function(p){ if (p.vehicle && currentTabTypes.indexOf(p.permitType) >= 0) _plateShasPermit[p.vehicle.toUpperCase()] = true; });
   var vehicles = VEHICLES.filter(function(v) {
     var plate = v.plate || v.code || '';
     if (!plate) return false;
     var vtype = (v.vehicleType||'').toUpperCase();
     // Show HORSE/TRAILER vehicles as usual, but ALSO show any vehicle
-    // that already has at least one saved permit record — even if its
-    // Vehicle Type is blank, misspelled, or something else entirely.
-    // Otherwise a genuinely-saved permit can end up completely invisible
-    // here just because of a vehicle-type data mismatch.
+    // that already has at least one saved permit of a type that
+    // belongs to THIS tab — even if its Vehicle Type is blank,
+    // misspelled, or something else entirely. Otherwise a genuinely-
+    // saved permit can end up completely invisible just because of a
+    // vehicle-type data mismatch. Permits belonging to the OTHER tab
+    // never count here, so a vehicle doesn't show up on a tab it has
+    // no relevant permits for.
     if (vtype !== 'HORSE' && vtype !== 'TRAILER' && !_plateShasPermit[plate.toUpperCase()]) return false;
     if (search && !plate.toLowerCase().includes(search.toLowerCase())) return false;
     return true;
@@ -4980,20 +4990,17 @@ window.renderPermits = function() {
 
   var horseTypes   = _currentPermitTab === 'vehicle' ? ['Insurance','LATRA'] : ['COMESA Horse','Permit Horse','Carbon Tax'];
   var trailerTypes = _currentPermitTab === 'vehicle' ? ['Insurance','LATRA','C28','Calibration'] : ['COMESA Trailer','Permit Trailer','ZABS'];
-
   var filtered = [];
   vehicles.forEach(function(v) {
     var plate = v.plate || v.code || '';
     var isTrailer = (v.vehicleType||'').toLowerCase().includes('trailer');
     var types = isTrailer ? trailerTypes : horseTypes;
-    // Always also include whatever permit type(s) this vehicle actually
-    // has saved on record — regardless of how it's classified. The
-    // Permit Type dropdown offers every type (Horse and Trailer variants
-    // alike) no matter which vehicle is selected, so a real permit can
-    // easily end up with a type that doesn't match the vehicle's
-    // assumed Horse/Trailer category. Without this, a genuinely-saved
-    // permit could stay invisible purely because of that mismatch.
-    var actualTypes = PERMITS.filter(function(p){ return (p.vehicle||'').toUpperCase() === plate.toUpperCase(); })
+    // Also include whatever permit type(s) this vehicle actually has
+    // saved — but ONLY if that type belongs to the current tab. This
+    // catches a genuine Horse/Trailer classification mismatch (so the
+    // permit isn't invisible) without ever pulling a Vehicle Permit type
+    // onto the Trip Permits tab, or vice versa.
+    var actualTypes = PERMITS.filter(function(p){ return (p.vehicle||'').toUpperCase() === plate.toUpperCase() && currentTabTypes.indexOf(p.permitType) >= 0; })
       .map(function(p){ return p.permitType; });
     types = types.concat(actualTypes.filter(function(t){ return types.indexOf(t) < 0; }));
     types.forEach(function(type) {
@@ -9091,18 +9098,28 @@ window.renderPermits = function() {
     return {class:'sGR', icon:'✅', label:'Valid', days:daysLeft, blocked:false};
   }
 
+  // The full set of types that belong to THIS tab only — Vehicle
+  // Permits (Insurance/LATRA/C28/Calibration) and Trip Permits (the six
+  // Trip types) must never leak into each other.
+  var currentTabTypes = _currentPermitTab === 'vehicle'
+    ? ['Insurance','LATRA','C28','Calibration']
+    : ['COMESA Horse','COMESA Trailer','Permit Horse','Permit Trailer','Carbon Tax','ZABS'];
+
   // Group by vehicle
   var _plateShasPermit = {};
-  PERMITS.forEach(function(p){ if (p.vehicle) _plateShasPermit[p.vehicle.toUpperCase()] = true; });
+  PERMITS.forEach(function(p){ if (p.vehicle && currentTabTypes.indexOf(p.permitType) >= 0) _plateShasPermit[p.vehicle.toUpperCase()] = true; });
   var vehicles = VEHICLES.filter(function(v) {
     var plate = v.plate || v.code || '';
     if (!plate) return false;
     var vtype = (v.vehicleType||'').toUpperCase();
     // Show HORSE/TRAILER vehicles as usual, but ALSO show any vehicle
-    // that already has at least one saved permit record — even if its
-    // Vehicle Type is blank, misspelled, or something else entirely.
-    // Otherwise a genuinely-saved permit can end up completely invisible
-    // here just because of a vehicle-type data mismatch.
+    // that already has at least one saved permit of a type that
+    // belongs to THIS tab — even if its Vehicle Type is blank,
+    // misspelled, or something else entirely. Otherwise a genuinely-
+    // saved permit can end up completely invisible just because of a
+    // vehicle-type data mismatch. Permits belonging to the OTHER tab
+    // never count here, so a vehicle doesn't show up on a tab it has
+    // no relevant permits for.
     if (vtype !== 'HORSE' && vtype !== 'TRAILER' && !_plateShasPermit[plate.toUpperCase()]) return false;
     if (search && !plate.toLowerCase().includes(search.toLowerCase())) return false;
     return true;
@@ -9117,20 +9134,17 @@ window.renderPermits = function() {
 
   var horseTypes   = _currentPermitTab === 'vehicle' ? ['Insurance','LATRA'] : ['COMESA Horse','Permit Horse','Carbon Tax'];
   var trailerTypes = _currentPermitTab === 'vehicle' ? ['Insurance','LATRA','C28','Calibration'] : ['COMESA Trailer','Permit Trailer','ZABS'];
-
   var filtered = [];
   vehicles.forEach(function(v) {
     var plate = v.plate || v.code || '';
     var isTrailer = (v.vehicleType||'').toLowerCase().includes('trailer');
     var types = isTrailer ? trailerTypes : horseTypes;
-    // Always also include whatever permit type(s) this vehicle actually
-    // has saved on record — regardless of how it's classified. The
-    // Permit Type dropdown offers every type (Horse and Trailer variants
-    // alike) no matter which vehicle is selected, so a real permit can
-    // easily end up with a type that doesn't match the vehicle's
-    // assumed Horse/Trailer category. Without this, a genuinely-saved
-    // permit could stay invisible purely because of that mismatch.
-    var actualTypes = PERMITS.filter(function(p){ return (p.vehicle||'').toUpperCase() === plate.toUpperCase(); })
+    // Also include whatever permit type(s) this vehicle actually has
+    // saved — but ONLY if that type belongs to the current tab. This
+    // catches a genuine Horse/Trailer classification mismatch (so the
+    // permit isn't invisible) without ever pulling a Vehicle Permit type
+    // onto the Trip Permits tab, or vice versa.
+    var actualTypes = PERMITS.filter(function(p){ return (p.vehicle||'').toUpperCase() === plate.toUpperCase() && currentTabTypes.indexOf(p.permitType) >= 0; })
       .map(function(p){ return p.permitType; });
     types = types.concat(actualTypes.filter(function(t){ return types.indexOf(t) < 0; }));
     types.forEach(function(type) {

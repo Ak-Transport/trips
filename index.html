@@ -1030,7 +1030,7 @@ td,td *{font-size:13px!important;font-family:'Inter',sans-serif!important}
       </div>
       <!-- Filters -->
       <div style="padding:10px 22px 8px;flex-shrink:0">
-        <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px">
+        <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:8px">
           <input type="text" id="permit-search" placeholder="&#128269; Search by vehicle..." oninput="renderPermits()">
           <select id="permit-filter-type" onchange="renderPermits()" style="font-size:12px;font-weight:600;color:var(--ac)">
             <option value="">All Permit Types</option>
@@ -1051,10 +1051,18 @@ td,td *{font-size:13px!important;font-family:'Inter',sans-serif!important}
             <option value="approved">&#10003; Approved — Upload</option>
           </select>
         </div>
+        <div style="display:flex;align-items:center;gap:8px">
+          <div style="flex:1"></div>
+          <div id="pmt-bulk-btns" style="display:none;align-items:center;gap:8px">
+            <span id="pmt-sel-count" style="font-size:12px;color:var(--t2);font-weight:600"></span>
+            <button class="btn bp" style="background:#0a2d6e;font-size:12px" onclick="permitsExportPDF()">&#128196; Export PDF</button>
+            <button class="btn bp" style="background:#166534;font-size:12px" onclick="permitsExportExcel()">&#128202; Export Excel</button>
+          </div>
+        </div>
       </div>
       <!-- Table -->
       <div id="tablearea">
-        <table><thead><tr><th>Vehicle</th><th>Type</th><th>Permit Type</th><th>Payment Date</th><th>Expiry Date</th><th>Days Left</th><th>Document</th><th>Status</th><th>Actions</th></tr></thead><tbody id="permits-tbody"></tbody></table>
+        <table><thead><tr><th style="width:32px"><input type="checkbox" id="pmt-check-all" onchange="toggleAllPmtChecks(this)"></th><th>Vehicle</th><th>Type</th><th>Permit Type</th><th>Payment Date</th><th>Expiry Date</th><th>Amount Paid</th><th>Days Left</th><th>Document</th><th>Status</th><th>Actions</th></tr></thead><tbody id="permits-tbody"></tbody></table>
         <div class="emptystate hidden" id="permits-empty"><div style="font-size:48px">&#128737;</div><h3>No Permits Recorded</h3><p>Record permits to enable trip health checks</p></div>
       </div>
     </div>
@@ -4907,12 +4915,18 @@ window.renderPermits = function() {
   }
 
   // Group by vehicle
+  var _plateShasPermit = {};
+  PERMITS.forEach(function(p){ if (p.vehicle) _plateShasPermit[p.vehicle.toUpperCase()] = true; });
   var vehicles = VEHICLES.filter(function(v) {
     var plate = v.plate || v.code || '';
     if (!plate) return false;
     var vtype = (v.vehicleType||'').toUpperCase();
-    // Only generate permit slots for HORSE and TRAILER
-    if (vtype !== 'HORSE' && vtype !== 'TRAILER') return false;
+    // Show HORSE/TRAILER vehicles as usual, but ALSO show any vehicle
+    // that already has at least one saved permit record — even if its
+    // Vehicle Type is blank, misspelled, or something else entirely.
+    // Otherwise a genuinely-saved permit can end up completely invisible
+    // here just because of a vehicle-type data mismatch.
+    if (vtype !== 'HORSE' && vtype !== 'TRAILER' && !_plateShasPermit[plate.toUpperCase()]) return false;
     if (search && !plate.toLowerCase().includes(search.toLowerCase())) return false;
     return true;
   });
@@ -4932,6 +4946,16 @@ window.renderPermits = function() {
     var plate = v.plate || v.code || '';
     var isTrailer = (v.vehicleType||'').toLowerCase().includes('trailer');
     var types = isTrailer ? trailerTypes : horseTypes;
+    // For a vehicle that only qualifies here because it has an existing
+    // permit (not a proper Horse/Trailer classification), also include
+    // whatever permit type(s) it actually has on record — otherwise a
+    // saved C28/Calibration permit could still be invisible even after
+    // the vehicle itself starts showing up.
+    if (!isTrailer && (v.vehicleType||'').toUpperCase() !== 'HORSE') {
+      var actualTypes = PERMITS.filter(function(p){ return (p.vehicle||'').toUpperCase() === plate.toUpperCase(); })
+        .map(function(p){ return p.permitType; });
+      types = types.concat(actualTypes.filter(function(t){ return types.indexOf(t) < 0; }));
+    }
     types.forEach(function(type) {
       if (tfilt && type !== tfilt) return;
       var p       = getLatestPermit(plate, type);
@@ -4954,8 +4978,10 @@ window.renderPermits = function() {
   var expCount = filtered.filter(function(f){ return f.info.blocked || f.info.warning || f.info.renewalPending || f.info.renewalApproved; }).length;
   if (sub) sub.textContent = tabLabel + ' — ' + filtered.length + ' slots · ' + expCount + ' need attention';
 
+  _permitsFilteredRows = filtered;
+
   var tbody = document.getElementById('permits-tbody');
-  tbody.innerHTML = filtered.map(function(f) {
+  tbody.innerHTML = filtered.map(function(f, fIdx) {
     var p       = f.permit;
     var renewal = f.renewal;
 
@@ -4998,12 +5024,16 @@ window.renderPermits = function() {
 
     var historyCount = PERMITS.filter(function(x){ return (x.vehicle||'').toUpperCase()===f.vehicle.toUpperCase() && x.permitType===f.type; }).length;
 
+    var amountCell = (!inRenewal && p) ? ('TZS ' + fmt(p.amountPaid || 0)) : '—';
+
     return '<tr>'
+      + '<td><input type="checkbox" class="pmt-cb" value="' + fIdx + '" onchange="updatePmtBulkBtns()"></td>'
       + '<td><b>' + esc(f.vehicle) + '</b></td>'
       + '<td style="color:var(--t2)">' + esc(f.vType) + '</td>'
       + '<td><b>' + esc(f.type) + '</b></td>'
       + '<td>' + paymentDateCell + '</td>'
       + '<td>' + expiryDateCell + '</td>'
+      + '<td>' + amountCell + '</td>'
       + '<td style="' + daysColor + '">' + daysDisplay + '</td>'
       + '<td>' + docCell + '</td>'
       + '<td><span class="sb ' + f.info.class + '">' + f.info.icon + ' ' + f.info.label + '</span></td>'
@@ -5019,6 +5049,69 @@ window.renderPermits = function() {
     document.getElementById('permits-empty').classList.remove('hidden');
   }
 };
+
+// ── PERMITS & DOCS — bulk selection + export ────────────────────────
+function toggleAllPmtChecks(cb) {
+  document.querySelectorAll('.pmt-cb').forEach(function(c){ c.checked = cb.checked; });
+  updatePmtBulkBtns();
+}
+
+function updatePmtBulkBtns() {
+  var checked = document.querySelectorAll('.pmt-cb:checked').length;
+  var all = document.querySelectorAll('.pmt-cb');
+  var bulkDiv = document.getElementById('pmt-bulk-btns');
+  var countEl = document.getElementById('pmt-sel-count');
+  var allCb   = document.getElementById('pmt-check-all');
+  if (bulkDiv) bulkDiv.style.display = checked > 0 ? 'flex' : 'none';
+  if (countEl) countEl.textContent = checked + ' selected';
+  if (allCb) allCb.checked = all.length > 0 && checked === all.length;
+}
+
+function _getSelectedPmtRows() {
+  var idxs = Array.from(document.querySelectorAll('.pmt-cb:checked')).map(function(c){ return parseInt(c.value, 10); });
+  return idxs.map(function(i){ return _permitsFilteredRows[i]; }).filter(Boolean);
+}
+
+function permitsExportExcel() {
+  var selected = _getSelectedPmtRows();
+  if (!selected.length) { toast('Select at least one permit','er'); return; }
+  var headers = ['Vehicle','Vehicle Type','Permit Type','Payment Date','Expiry Date','Amount Paid (TZS)','Status'];
+  var csvRows = [headers.join(',')];
+  selected.forEach(function(f){
+    var p = f.permit;
+    var cells = [f.vehicle, f.vType, f.type, p?fmtDate(p.paymentDate):'—', p?fmtDate(p.expiryDate):'—', p?(p.amountPaid||0):0, f.info.label];
+    csvRows.push(cells.map(function(c){ return '"'+String(c).replace(/"/g,'""')+'"'; }).join(','));
+  });
+  var csv  = csvRows.join('\n');
+  var blob = new Blob([csv], {type:'text/csv;charset=utf-8;'});
+  var a    = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'AK_Permits_'+today()+'.csv';
+  document.body.appendChild(a); a.click(); document.body.removeChild(a);
+  URL.revokeObjectURL(a.href);
+  toast(selected.length+' permit'+(selected.length!==1?'s':'')+' exported \u2713','ok');
+}
+
+function permitsExportPDF() {
+  var selected = _getSelectedPmtRows();
+  if (!selected.length) { toast('Select at least one permit','er'); return; }
+  var totalAmt = 0;
+  var rows = selected.map(function(f){
+    var p = f.permit;
+    totalAmt += p ? parseFloat(p.amountPaid||0) : 0;
+    return '<tr><td><b>'+esc(f.vehicle)+'</b></td><td>'+esc(f.vType)+'</td><td>'+esc(f.type)+'</td>'
+      +'<td>'+(p?fmtDate(p.paymentDate):'—')+'</td><td>'+(p?fmtDate(p.expiryDate):'—')+'</td>'
+      +'<td style="text-align:right">'+(p?fmt(p.amountPaid||0):'—')+'</td><td>'+esc(f.info.label)+'</td></tr>';
+  }).join('');
+  _printFormWindow({
+    title: 'Permits & Docs',
+    formTitle: 'Permits & Docs',
+    theadHtml: '<tr><th>Vehicle</th><th>Vehicle Type</th><th>Permit Type</th><th>Payment Date</th><th>Expiry Date</th><th style="text-align:right">Amount (TZS)</th><th>Status</th></tr>',
+    tbodyHtml: rows,
+    tfootHtml: '<tr><td colspan="5" style="text-align:right">TOTAL</td><td style="text-align:right">'+fmt(totalAmt)+'</td><td></td></tr>',
+    noSignatures: true
+  });
+}
 
 // ── QUICK RENEW — one click creates renewal request + clears permit data ──
 async function quickRenewPermit(vehicle, type, vType) {
@@ -8912,12 +9005,18 @@ window.renderPermits = function() {
   }
 
   // Group by vehicle
+  var _plateShasPermit = {};
+  PERMITS.forEach(function(p){ if (p.vehicle) _plateShasPermit[p.vehicle.toUpperCase()] = true; });
   var vehicles = VEHICLES.filter(function(v) {
     var plate = v.plate || v.code || '';
     if (!plate) return false;
     var vtype = (v.vehicleType||'').toUpperCase();
-    // Only generate permit slots for HORSE and TRAILER
-    if (vtype !== 'HORSE' && vtype !== 'TRAILER') return false;
+    // Show HORSE/TRAILER vehicles as usual, but ALSO show any vehicle
+    // that already has at least one saved permit record — even if its
+    // Vehicle Type is blank, misspelled, or something else entirely.
+    // Otherwise a genuinely-saved permit can end up completely invisible
+    // here just because of a vehicle-type data mismatch.
+    if (vtype !== 'HORSE' && vtype !== 'TRAILER' && !_plateShasPermit[plate.toUpperCase()]) return false;
     if (search && !plate.toLowerCase().includes(search.toLowerCase())) return false;
     return true;
   });
@@ -8937,6 +9036,16 @@ window.renderPermits = function() {
     var plate = v.plate || v.code || '';
     var isTrailer = (v.vehicleType||'').toLowerCase().includes('trailer');
     var types = isTrailer ? trailerTypes : horseTypes;
+    // For a vehicle that only qualifies here because it has an existing
+    // permit (not a proper Horse/Trailer classification), also include
+    // whatever permit type(s) it actually has on record — otherwise a
+    // saved C28/Calibration permit could still be invisible even after
+    // the vehicle itself starts showing up.
+    if (!isTrailer && (v.vehicleType||'').toUpperCase() !== 'HORSE') {
+      var actualTypes = PERMITS.filter(function(p){ return (p.vehicle||'').toUpperCase() === plate.toUpperCase(); })
+        .map(function(p){ return p.permitType; });
+      types = types.concat(actualTypes.filter(function(t){ return types.indexOf(t) < 0; }));
+    }
     types.forEach(function(type) {
       if (tfilt && type !== tfilt) return;
       var p       = getLatestPermit(plate, type);
@@ -8959,8 +9068,10 @@ window.renderPermits = function() {
   var expCount = filtered.filter(function(f){ return f.info.blocked || f.info.warning || f.info.renewalPending || f.info.renewalApproved; }).length;
   if (sub) sub.textContent = tabLabel + ' — ' + filtered.length + ' slots · ' + expCount + ' need attention';
 
+  _permitsFilteredRows = filtered;
+
   var tbody = document.getElementById('permits-tbody');
-  tbody.innerHTML = filtered.map(function(f) {
+  tbody.innerHTML = filtered.map(function(f, fIdx) {
     var p       = f.permit;
     var renewal = f.renewal;
 
@@ -9003,12 +9114,16 @@ window.renderPermits = function() {
 
     var historyCount = PERMITS.filter(function(x){ return (x.vehicle||'').toUpperCase()===f.vehicle.toUpperCase() && x.permitType===f.type; }).length;
 
+    var amountCell = (!inRenewal && p) ? ('TZS ' + fmt(p.amountPaid || 0)) : '—';
+
     return '<tr>'
+      + '<td><input type="checkbox" class="pmt-cb" value="' + fIdx + '" onchange="updatePmtBulkBtns()"></td>'
       + '<td><b>' + esc(f.vehicle) + '</b></td>'
       + '<td style="color:var(--t2)">' + esc(f.vType) + '</td>'
       + '<td><b>' + esc(f.type) + '</b></td>'
       + '<td>' + paymentDateCell + '</td>'
       + '<td>' + expiryDateCell + '</td>'
+      + '<td>' + amountCell + '</td>'
       + '<td style="' + daysColor + '">' + daysDisplay + '</td>'
       + '<td>' + docCell + '</td>'
       + '<td><span class="sb ' + f.info.class + '">' + f.info.icon + ' ' + f.info.label + '</span></td>'
@@ -9024,6 +9139,69 @@ window.renderPermits = function() {
     document.getElementById('permits-empty').classList.remove('hidden');
   }
 };
+
+// ── PERMITS & DOCS — bulk selection + export ────────────────────────
+function toggleAllPmtChecks(cb) {
+  document.querySelectorAll('.pmt-cb').forEach(function(c){ c.checked = cb.checked; });
+  updatePmtBulkBtns();
+}
+
+function updatePmtBulkBtns() {
+  var checked = document.querySelectorAll('.pmt-cb:checked').length;
+  var all = document.querySelectorAll('.pmt-cb');
+  var bulkDiv = document.getElementById('pmt-bulk-btns');
+  var countEl = document.getElementById('pmt-sel-count');
+  var allCb   = document.getElementById('pmt-check-all');
+  if (bulkDiv) bulkDiv.style.display = checked > 0 ? 'flex' : 'none';
+  if (countEl) countEl.textContent = checked + ' selected';
+  if (allCb) allCb.checked = all.length > 0 && checked === all.length;
+}
+
+function _getSelectedPmtRows() {
+  var idxs = Array.from(document.querySelectorAll('.pmt-cb:checked')).map(function(c){ return parseInt(c.value, 10); });
+  return idxs.map(function(i){ return _permitsFilteredRows[i]; }).filter(Boolean);
+}
+
+function permitsExportExcel() {
+  var selected = _getSelectedPmtRows();
+  if (!selected.length) { toast('Select at least one permit','er'); return; }
+  var headers = ['Vehicle','Vehicle Type','Permit Type','Payment Date','Expiry Date','Amount Paid (TZS)','Status'];
+  var csvRows = [headers.join(',')];
+  selected.forEach(function(f){
+    var p = f.permit;
+    var cells = [f.vehicle, f.vType, f.type, p?fmtDate(p.paymentDate):'—', p?fmtDate(p.expiryDate):'—', p?(p.amountPaid||0):0, f.info.label];
+    csvRows.push(cells.map(function(c){ return '"'+String(c).replace(/"/g,'""')+'"'; }).join(','));
+  });
+  var csv  = csvRows.join('\n');
+  var blob = new Blob([csv], {type:'text/csv;charset=utf-8;'});
+  var a    = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'AK_Permits_'+today()+'.csv';
+  document.body.appendChild(a); a.click(); document.body.removeChild(a);
+  URL.revokeObjectURL(a.href);
+  toast(selected.length+' permit'+(selected.length!==1?'s':'')+' exported \u2713','ok');
+}
+
+function permitsExportPDF() {
+  var selected = _getSelectedPmtRows();
+  if (!selected.length) { toast('Select at least one permit','er'); return; }
+  var totalAmt = 0;
+  var rows = selected.map(function(f){
+    var p = f.permit;
+    totalAmt += p ? parseFloat(p.amountPaid||0) : 0;
+    return '<tr><td><b>'+esc(f.vehicle)+'</b></td><td>'+esc(f.vType)+'</td><td>'+esc(f.type)+'</td>'
+      +'<td>'+(p?fmtDate(p.paymentDate):'—')+'</td><td>'+(p?fmtDate(p.expiryDate):'—')+'</td>'
+      +'<td style="text-align:right">'+(p?fmt(p.amountPaid||0):'—')+'</td><td>'+esc(f.info.label)+'</td></tr>';
+  }).join('');
+  _printFormWindow({
+    title: 'Permits & Docs',
+    formTitle: 'Permits & Docs',
+    theadHtml: '<tr><th>Vehicle</th><th>Vehicle Type</th><th>Permit Type</th><th>Payment Date</th><th>Expiry Date</th><th style="text-align:right">Amount (TZS)</th><th>Status</th></tr>',
+    tbodyHtml: rows,
+    tfootHtml: '<tr><td colspan="5" style="text-align:right">TOTAL</td><td style="text-align:right">'+fmt(totalAmt)+'</td><td></td></tr>',
+    noSignatures: true
+  });
+}
 
 // ── QUICK RENEW — one click creates renewal request + clears permit data ──
 async function quickRenewPermit(vehicle, type, vType) {
@@ -16306,6 +16484,7 @@ function _handleAtDocSelect(input, prefix){
 // Keeps the same field id/.value contract as the old <select> did, so
 // nothing else in the Add Trip flow needs to change.
 var _atFieldOptions = {}; // fieldId -> array of option strings
+var _permitsFilteredRows = []; // last-rendered Permits & Docs rows, for bulk export
 
 function _atSearchableField(id, placeholder, items, onChangeAttr) {
   _atFieldOptions[id] = items || [];

@@ -1208,7 +1208,8 @@ td,td *{font-size:13px!important;font-family:'Inter',sans-serif!important}
         <div class="stab" id="rf-tabs">
           <button class="stab-btn active" onclick="switchRfTab('fuel')">&#9981; Fuel Requests</button>
           <button class="stab-btn" onclick="switchRfTab('mileage')">&#128667; Mileage Requests</button>
-          <button class="stab-btn" onclick="switchRfTab('toll')">&#128181; Road Toll (Tunduma)</button>
+          <button class="stab-btn" onclick="switchRfTab('tolltunduma')">&#128181; Road Toll (Tunduma)</button>
+          <button class="stab-btn" onclick="switchRfTab('tollsakania')">&#128181; Road Toll (Sakania)</button>
           <button class="stab-btn" onclick="switchRfTab('permit')">&#128737; Trip Permit Requests</button>
           <button class="stab-btn" onclick="switchRfTab('vehpermit')">&#128295; Vehicle Permit Requests</button>
           <button class="stab-btn" onclick="switchRfTab('addexp')">&#128203; Additional Expenses</button>
@@ -2010,13 +2011,13 @@ td,td *{font-size:13px!important;font-family:'Inter',sans-serif!important}
         </div>
         <div class="stab-panel" id="stab-routes">
           <div class="scard"><div class="scard-title">&#128506; Routes &amp; Fuel Reductions <button class="btn bg" style="font-size:11px;padding:4px 12px;margin-left:auto" onclick="addRouteRow()">+ Add Route</button></div>
-            <table class="rate-matrix"><thead><tr><th>Route Name</th><th>Destination</th><th>Border</th><th>Distance (KM)</th><th>Fuel Reduction (ltrs)</th><th></th></tr></thead><tbody id="routes-tbody"></tbody></table>
+            <table class="rate-matrix"><thead><tr><th>Route Name</th><th>Destination</th><th>Border</th><th>Distance (KM)</th><th>Mileage Amount (TZS)</th><th>Fuel Adjustment (ltrs) &mdash; +/&minus;</th><th></th></tr></thead><tbody id="routes-tbody"></tbody></table>
           </div>
         </div>
         <div class="stab-panel" id="stab-fuel">
           <div class="scard"><div class="scard-title">&#9981; Base Fuel Per Truck (Lubumbashi/Solwezi)</div>
-            <p style="font-size:12px;color:var(--t2);margin-bottom:14px">Enter base fuel for longest route. System auto-calculates Lusaka (base&#8722;<span id="fuel-reduc-lusaka">150</span>ltrs) and Ndola (base&#8722;<span id="fuel-reduc-ndola">250</span>ltrs).</p>
-            <table class="rate-matrix"><thead><tr><th>Truck (Horse)</th><th>Base Fuel (ltrs)</th><th>Fuel Stage</th><th>Lusaka (auto)</th><th>Ndola (auto)</th><th>Solwezi (=base)</th><th>Lubumbashi (=base)</th></tr></thead><tbody id="fuel-config-tbody"></tbody></table>
+            <p style="font-size:12px;color:var(--t2);margin-bottom:14px">Enter each truck's base fuel. Each destination's adjustment (set per route below in Routes) is added to or subtracted from this base automatically.</p>
+            <table class="rate-matrix"><thead><tr id="fuel-config-thead-row"><th>Truck (Horse)</th><th>Base Fuel (ltrs)</th><th>Fuel Stage</th></tr></thead><tbody id="fuel-config-tbody"></tbody></table>
           </div>
         </div>
         <div class="stab-panel" id="stab-permitrates">
@@ -2768,7 +2769,7 @@ function borderClass(b){if((b||'').toLowerCase().includes('tunduma'))return 'sBL
 // ── BORDER AUTO-FILL ──
 // ── MULTI-RELEASE (Add Releases view) ──────────────────────────────
 var _arLineCount = 0;
-var DEST_BORDER_MAP = {Ndola:'Tunduma',Lusaka:'Tunduma',Solwezi:'Tunduma',Lubumbashi:'Tunduma'};
+var DEST_BORDER_MAP = {Ndola:'Tunduma',Lusaka:'Tunduma',Solwezi:'Tunduma',Lubumbashi:'Sakania'};
 var DEST_BORDER2_MAP = {Lubumbashi:'Sakania'}; // destinations needing a second border crossing
 
 function openAddReleasesView(){
@@ -4402,7 +4403,60 @@ function onPermitVehicleChange(){
   }
 }
 function onPermitTypeChange(){var type=document.getElementById('pmt-type').value;document.getElementById('pmt-applies').value=PERMIT_APPLIES[type]||'';calcPermitExpiry();}
-function calcPermitExpiry(){var date=document.getElementById('pmt-date').value;var type=document.getElementById('pmt-type').value;if(!date||!type)return;var months=PERMIT_DURATIONS[type]||12;var exp=new Date(date);exp.setMonth(exp.getMonth()+months);exp.setDate(exp.getDate()-1);document.getElementById('pmt-expiry').value=exp.toISOString().split('T')[0];}
+// Returns the fuel adjustment (in litres) configured for a destination
+// in Settings -> Routes. Can be negative (reduces fuel) or positive
+// (adds fuel, e.g. a route that genuinely needs more than the truck's
+// base amount). Returns 0 if no matching route/adjustment exists. This
+// is the single source of truth for this calculation now - every place
+// that used to have its own hardcoded Lusaka/Ndola logic calls this
+// instead, so the result is always consistent everywhere.
+function _routeFuelAdjust(destination) {
+  if (!destination) return 0;
+  var route = ROUTES.find(function(r){ return (r.destination||'').toLowerCase() === destination.toLowerCase(); });
+  return route ? (parseFloat(route.fuelReducLtrs) || 0) : 0;
+}
+
+// Returns the Mileage amount (a flat TZS figure) configured for a
+// destination in Settings -> Routes. Each destination sets its own
+// fixed amount directly — no distance x rate calculation involved. If
+// a route hasn't been given a specific Mileage Amount yet, this falls
+// back to the old distance x global-rate calculation, so nothing
+// breaks for a route that's simply never been configured with the new
+// field. This is the single source of truth — every place that used
+// to calculate dist*mileageRate on its own now calls this instead.
+function _routeMileageAmount(destination) {
+  if (!destination) return 0;
+  var route = ROUTES.find(function(r){ return (r.destination||'').toLowerCase() === destination.toLowerCase(); });
+  if (route && parseFloat(route.mileageAmount) > 0) return parseFloat(route.mileageAmount);
+  var dist = route ? parseFloat(route.distanceKM||0) : 0;
+  var rate = parseFloat(SETTINGS.mileageRate||500);
+  return dist * rate;
+}
+
+function calcPermitExpiry(){
+  var date=document.getElementById('pmt-date').value;var type=document.getElementById('pmt-type').value;if(!date||!type)return;
+  var payDate=new Date(date);
+  var exp;
+  if (type === 'C28') {
+    // C28 always expires 31 Dec of the SAME calendar year it was paid in
+    // - not a rolling duration like every other permit type. Paid in
+    // January or paid in November both expire the same year-end.
+    exp = new Date(payDate.getFullYear(), 11, 31);
+  } else {
+    var months=PERMIT_DURATIONS[type]||12;
+    exp=new Date(date);exp.setMonth(exp.getMonth()+months);exp.setDate(exp.getDate()-1);
+  }
+  // Build the YYYY-MM-DD string from the date object's own LOCAL
+  // components, instead of going through toISOString() (which converts
+  // to UTC first). For any timezone ahead of UTC - including East
+  // Africa Time, UTC+3 - that UTC conversion silently shifts local
+  // midnight back onto the previous day, which is exactly why C28 was
+  // showing 30 Dec instead of 31 Dec.
+  var y = exp.getFullYear();
+  var m = String(exp.getMonth()+1).padStart(2,'0');
+  var d = String(exp.getDate()).padStart(2,'0');
+  document.getElementById('pmt-expiry').value = y+'-'+m+'-'+d;
+}
 async function uploadPmtDocFile() {
   var vehicle = document.getElementById('pmt-vehicle').value;
   var type    = document.getElementById('pmt-type').value;
@@ -4524,9 +4578,8 @@ function onTripFuelTripChange(){
   var id=document.getElementById('tfuel-trip').value;var t=TRIPS.find(function(x){return x.id===id;});if(!t)return;
   document.getElementById('tfuel-horse').value=t.horse||'';document.getElementById('tfuel-driver').value=t.driver||'';document.getElementById('tfuel-route').value=t.destination||'';
   var tf=TRUCK_FUEL.find(function(x){return(x.truck||'').toUpperCase()===(t.horse||'').toUpperCase();});
-  var base=tf?parseFloat(tf.baseFuel||0):0;var dest=(t.destination||'').toLowerCase();
-  var reducL=parseFloat(SETTINGS.fuelReducLusaka)||150;var reducN=parseFloat(SETTINGS.fuelReducNdola)||250;
-  var ratio=base;if(dest.includes('lusaka'))ratio=base-reducL;else if(dest.includes('ndola'))ratio=base-reducN;
+  var base=tf?parseFloat(tf.baseFuel||0):0;
+  var ratio=base + _routeFuelAdjust(t.destination);
   document.getElementById('tfuel-ratio').value=ratio>0?ratio+' ltrs':'Not configured (set in Settings → Truck Fuel Config)';window._currentFuelRatio=ratio;
 }
 function onTripFuelStageChange(){
@@ -4617,46 +4670,72 @@ function renderDashboard(){updateBadges();}
 function renderSettings(){
   ['companyName','companyAddress','companyPhone','companyEmail','fuelPrice','fuelLossRate','mileageRate','preloadingDefault','lowBalanceThreshold','expiryAlertDays'].forEach(function(f){var el=document.getElementById('set-'+f);if(el)el.value=SETTINGS[f]!==undefined?SETTINGS[f]:'';});
   ['tollTunduma','tollSakania','bondFee','gpsTracking','exchangeRate'].forEach(function(f){var el=document.getElementById('set-'+f);if(el)el.value=SETTINGS[f]||'';});
-  var rl=document.getElementById('fuel-reduc-lusaka');var rn=document.getElementById('fuel-reduc-ndola');
-  if(rl)rl.textContent=SETTINGS.fuelReducLusaka||150;if(rn)rn.textContent=SETTINGS.fuelReducNdola||250;
   renderRoutesTable();renderTruckFuelTable();renderPermitRatesTable();renderTransportRatesTable();
 }
 function renderRoutesTable(){
   var tbody=document.getElementById('routes-tbody');if(!tbody)return;
   tbody.innerHTML=ROUTES.map(function(r,i){
     return '<tr><td><input value="'+esc(r.name)+'" id="rt-name-'+i+'" style="width:100%"></td>'
-      +'<td><select id="rt-dest-'+i+'">'+['Ndola','Lusaka','Solwezi','Lubumbashi'].map(function(d){return '<option'+(d===r.destination?' selected':'')+'>'+d+'</option>';}).join('')+'</select></td>'
+      +'<td><select id="rt-dest-'+i+'" onchange="updateRouteBorder(this,'+i+')">'+['Ndola','Lusaka','Solwezi','Lubumbashi'].map(function(d){return '<option'+(d===r.destination?' selected':'')+'>'+d+'</option>';}).join('')+'</select></td>'
       +'<td><input value="'+esc(r.border)+'" id="rt-border-'+i+'" readonly style="background:#f5f5f7"></td>'
       +'<td><input type="number" value="'+(r.distanceKM||'')+'" id="rt-dist-'+i+'" style="width:100%"></td>'
+      +'<td><input type="number" min="0" value="'+(r.mileageAmount||'')+'" id="rt-mileage-'+i+'" style="width:100%" placeholder="e.g. 150000"></td>'
       +'<td><input type="number" value="'+(r.fuelReducLtrs||'')+'" id="rt-reduc-'+i+'" style="width:100%"></td>'
       +'<td><button onclick="deleteRouteRow(\''+r.id+'\')" style="background:none;border:none;color:#b91c1c;cursor:pointer;font-size:14px">✕</button></td></tr>';
   }).join('');
 }
-function addRouteRow(){ROUTES.push({id:uuid(),name:'',destination:'Ndola',border:'Tunduma',distanceKM:0,fuelReducLtrs:0});renderRoutesTable();}
+function addRouteRow(){ROUTES.push({id:uuid(),name:'',destination:'Ndola',border:'Tunduma',distanceKM:0,mileageAmount:0,fuelReducLtrs:0,_isNew:true});renderRoutesTable();}
+function updateRouteBorder(sel, i) {
+  var bm = {Ndola:'Tunduma',Lusaka:'Tunduma',Solwezi:'Tunduma',Lubumbashi:'Sakania'};
+  var borderInput = document.getElementById('rt-border-'+i);
+  if (borderInput) borderInput.value = bm[sel.value] || '';
+}
 function deleteRouteRow(id){ROUTES=ROUTES.filter(function(r){return r.id!==id;});renderRoutesTable();}
 function renderTruckFuelTable(){
   var tbody=document.getElementById('fuel-config-tbody');if(!tbody)return;
   var horses=VEHICLES.filter(function(v){return!(v.vehicleType||'').toLowerCase().includes('trailer');});
-  var reducL=parseFloat(SETTINGS.fuelReducLusaka)||150,reducN=parseFloat(SETTINGS.fuelReducNdola)||250;
+
+  // Header row grows/shrinks with however many routes exist in Settings
+  // -> Routes, instead of hardcoding a fixed 4 destinations. Adding or
+  // removing a route here immediately adds/removes its column.
+  var theadRow = document.getElementById('fuel-config-thead-row');
+  if (theadRow) {
+    theadRow.innerHTML = '<th>Truck (Horse)</th><th>Base Fuel (ltrs)</th><th>Fuel Stage</th>'
+      + ROUTES.map(function(r){
+          var adj = parseFloat(r.fuelReducLtrs)||0;
+          var label = adj===0 ? '(=base)' : (adj>0 ? '(+'+adj+')' : '('+adj+')');
+          return '<th>'+esc(r.destination||r.name||'—')+' '+label+'</th>';
+        }).join('');
+  }
+
   tbody.innerHTML=horses.map(function(v){
     var plate=v.plate||v.code||'';
     var tf=TRUCK_FUEL.find(function(x){return(x.truck||'').toUpperCase()===plate.toUpperCase();});
     var base=tf?parseFloat(tf.baseFuel||0):0;
     var stage=tf?(tf.fuelStage||'Split'):'Split';
     return '<tr><td><b>'+esc(plate)+'</b></td>'
-      +'<td><input type="number" min="0" value="'+(base||'')+'" id="tf-'+plate+'" style="width:90px" oninput="updateFuelRow(this,\''+plate+'\','+reducL+','+reducN+')"></td>'
+      +'<td><input type="number" min="0" value="'+(base||'')+'" id="tf-'+plate+'" style="width:90px" oninput="updateFuelRow(this,\''+plate+'\')"></td>'
       +'<td><select id="tfs-'+plate+'" style="font-size:12px;padding:4px 6px;border:1px solid #d2d2d7;border-radius:6px">'
       +'<option'+(stage==='Split'?' selected':'')+'>Split</option>'
       +'<option'+(stage==='Full at Once'?' selected':'')+'>Full at Once</option>'
       +'</select></td>'
-      +'<td id="tf-lusaka-'+plate+'">'+(base?base-reducL:'—')+'</td><td id="tf-ndola-'+plate+'">'+(base?base-reducN:'—')+'</td>'
-      +'<td id="tf-solwezi-'+plate+'">'+(base||'—')+'</td><td id="tf-lubum-'+plate+'">'+(base||'—')+'</td></tr>';
+      + ROUTES.map(function(r){
+          var adj = parseFloat(r.fuelReducLtrs)||0;
+          var val = base ? (base + adj) : 0;
+          var destKey = (r.destination||r.name||'').replace(/[^a-zA-Z0-9]/g,'');
+          return '<td id="tf-route-'+plate+'-'+destKey+'">'+(base?val:'—')+'</td>';
+        }).join('')
+      + '</tr>';
   }).join('');
 }
-function updateFuelRow(inp,plate,reducL,reducN){
+function updateFuelRow(inp,plate){
   var base=parseFloat(inp.value)||0;
-  var s=function(id,val){var el=document.getElementById(id);if(el)el.textContent=val||'—';};
-  s('tf-lusaka-'+plate,base?base-reducL:'');s('tf-ndola-'+plate,base?base-reducN:'');s('tf-solwezi-'+plate,base||'');s('tf-lubum-'+plate,base||'');
+  var s=function(id,val){var el=document.getElementById(id);if(el)el.textContent=(val===''||val===null||typeof val==='undefined')?'—':val;};
+  ROUTES.forEach(function(r){
+    var adj = parseFloat(r.fuelReducLtrs)||0;
+    var destKey = (r.destination||r.name||'').replace(/[^a-zA-Z0-9]/g,'');
+    s('tf-route-'+plate+'-'+destKey, base ? (base + adj) : '');
+  });
 }
 function renderPermitRatesTable(){
   var tbody=document.getElementById('permit-rates-tbody');if(!tbody)return;
@@ -4683,8 +4762,24 @@ async function saveAllSettings(){
     var record={};
     ['companyName','companyAddress','companyPhone','companyEmail','fuelPrice','fuelLossRate','mileageRate','preloadingDefault','lowBalanceThreshold','expiryAlertDays','tollTunduma','tollSakania','bondFee','gpsTracking','exchangeRate'].forEach(function(f){var el=document.getElementById('set-'+f);if(el)record[f]=el.value;});
     await callAPI('saveSettings',{record:record});SETTINGS=Object.assign(SETTINGS,record);
-    var routes=ROUTES.map(function(r,i){var destEl=document.getElementById('rt-dest-'+i);var dest=destEl?destEl.value:r.destination;var bm={Ndola:'Tunduma',Lusaka:'Tunduma',Solwezi:'Tunduma',Lubumbashi:'Sakania'};return Object.assign({},r,{name:(document.getElementById('rt-name-'+i)||{}).value||r.name,destination:dest,border:bm[dest]||r.border,distanceKM:parseFloat((document.getElementById('rt-dist-'+i)||{}).value||r.distanceKM)||0,fuelReducLtrs:parseFloat((document.getElementById('rt-reduc-'+i)||{}).value||r.fuelReducLtrs)||0});});
-    for(var i=0;i<routes.length;i++){await callAPI('updateRoute',{record:routes[i]});ROUTES[i]=routes[i];}
+    var routes=ROUTES.map(function(r,i){var destEl=document.getElementById('rt-dest-'+i);var dest=destEl?destEl.value:r.destination;var bm={Ndola:'Tunduma',Lusaka:'Tunduma',Solwezi:'Tunduma',Lubumbashi:'Sakania'};return Object.assign({},r,{name:(document.getElementById('rt-name-'+i)||{}).value||r.name,destination:dest,border:bm[dest]||r.border,distanceKM:parseFloat((document.getElementById('rt-dist-'+i)||{}).value||r.distanceKM)||0,mileageAmount:parseFloat((document.getElementById('rt-mileage-'+i)||{}).value||r.mileageAmount)||0,fuelReducLtrs:parseFloat((document.getElementById('rt-reduc-'+i)||{}).value||r.fuelReducLtrs)||0});});
+    var routeErrors = [];
+    for(var i=0;i<routes.length;i++){
+      // A brand-new route (added via "+ Add Route" this session) has
+      // never been saved before, so it must go through addRoute, not
+      // updateRoute — the backend's updateRoute fails with "Record not
+      // found" for an id it's never seen, and that failure used to be
+      // silently ignored here, meaning a new route could look saved on
+      // screen while never actually reaching the sheet at all.
+      var isNew = routes[i]._isNew;
+      delete routes[i]._isNew;
+      var res = isNew
+        ? await callAPI('addRoute', {record: routes[i]})
+        : await callAPI('updateRoute', {record: routes[i]});
+      if (res && res.error) { routeErrors.push((routes[i].destination||'route '+(i+1)) + ': ' + res.error); continue; }
+      ROUTES[i]=routes[i];
+    }
+    if (routeErrors.length) throw new Error('Route(s) failed to save — ' + routeErrors.join('; '));
     var horses=VEHICLES.filter(function(v){return!(v.vehicleType||'').toLowerCase().includes('trailer');});
     var tfRecords=horses.map(function(v){var plate=v.plate||v.code||'';var el=document.getElementById('tf-'+plate);var stageEl=document.getElementById('tfs-'+plate);var existing=TRUCK_FUEL.find(function(x){return(x.truck||'').toUpperCase()===plate.toUpperCase();});return{id:existing?existing.id:uuid(),truck:plate,baseFuel:parseFloat(el?el.value:0)||0,fuelStage:stageEl?stageEl.value:'Split'};}).filter(function(r){return r.baseFuel>0;});
     if(tfRecords.length){await callAPI('saveTruckFuelConfig',{records:tfRecords});TRUCK_FUEL=tfRecords;}
@@ -5581,7 +5676,13 @@ function editPermitRecord(id) {
     document.getElementById('pmt-type').value    = p.permitType || '';
     onPermitTypeChange();
     document.getElementById('pmt-date').value    = p.paymentDate || '';
-    document.getElementById('pmt-expiry').value  = p.expiryDate || '';
+    // Recalculate expiry using the current rule for this permit type,
+    // instead of trusting whatever was saved before - setting .value
+    // directly (as above) never fires the date field's onchange event,
+    // so without this explicit call, an older record's stale expiry
+    // (calculated under an old/different rule) would just get silently
+    // re-saved unchanged even after opening and saving it again.
+    calcPermitExpiry();
     document.getElementById('pmt-amount').value  = p.amountPaid || '';
     document.getElementById('pmt-receipt').value = p.receiptNo || '';
     document.getElementById('pmt-docurl').value  = p.documentUrl || '';
@@ -5885,13 +5986,13 @@ async function autoCreateLoadingRequests(t) {
   if (!hasMileage) {
     var route = ROUTES.find(function(r){ return r.destination === t.destination; });
     var dist  = route ? parseFloat(route.distanceKM||0) : 0;
-    var mRate = parseFloat(SETTINGS.mileageRate||500);
+    var mileageAmt = _routeMileageAmount(t.destination);
     var mRec  = {
       id: uuid(), reqNo: nextId(FUEL_REQUESTS,'MGR-','reqNo'),
       requestType: 'MILEAGE', currency: 'TZS',
       tripId: t.id, tripNo: t.tripNo, horse: t.horse, driver: t.driver,
-      route: t.destination, distanceKM: dist, ratePerKM: mRate,
-      amountTZS: dist * mRate, amountUSD: 0,
+      route: t.destination, distanceKM: dist, ratePerKM: 0,
+      amountTZS: mileageAmt, amountUSD: 0,
       description: 'Mileage — ' + t.destination + (dist?' ('+dist+'km)':''),
       issuanceStage: 'Mileage',
       status: 'PENDING', requestedBy: reqBy, requestedAt: t.loadingDate,
@@ -5949,13 +6050,7 @@ async function autoCreateLoadingRequests(t) {
   });
   if (!hasFuel) {
     var baseFuel = tf ? parseFloat(tf.baseFuel||0) : 0;
-    var dest     = (t.destination||'').toLowerCase();
-    var reducL   = parseFloat(SETTINGS.fuelReducLusaka||150);
-    var reducN   = parseFloat(SETTINGS.fuelReducNdola||250);
-    var ratio    = baseFuel;
-    if (dest.includes('lusaka'))      ratio = baseFuel - reducL;
-    else if (dest.includes('ndola'))  ratio = baseFuel - reducN;
-    else if (dest.includes('solwezi'))ratio = baseFuel - reducL;
+    var ratio    = baseFuel + _routeFuelAdjust(t.destination);
     var preload  = parseInt(SETTINGS.preloadingDefault||100);
     var postLtrs = Math.max(0, ratio - preload);
     var fuelPrice= parseFloat(SETTINGS.fuelPrice||3200);
@@ -6004,10 +6099,10 @@ function openMileageReq() {
       document.getElementById('mlg-dest').value   = t.destination || '';
       var route = ROUTES.find(function(r){ return r.destination === t.destination; });
       var dist = route ? parseFloat(route.distanceKM||0) : 0;
-      var rate = parseFloat(SETTINGS.mileageRate || 500);
+      var mileageAmt = _routeMileageAmount(t.destination);
       document.getElementById('mlg-dist').value   = dist ? dist + ' km' : 'Not configured';
-      document.getElementById('mlg-rate').value   = 'TZS ' + fmt(rate) + '/km';
-      document.getElementById('mlg-amount').value = dist ? 'TZS ' + fmt(dist * rate) : '—';
+      document.getElementById('mlg-rate').value   = route && parseFloat(route.mileageAmount)>0 ? 'Fixed amount (set in Routes)' : 'TZS ' + fmt(parseFloat(SETTINGS.mileageRate||500)) + '/km (fallback)';
+      document.getElementById('mlg-amount').value = mileageAmt ? 'TZS ' + fmt(mileageAmt) : '—';
     },
     onSave: async function() {
       var tripId = document.getElementById('mlg-trip').value;
@@ -6016,13 +6111,13 @@ function openMileageReq() {
       var t = TRIPS.find(function(x){ return x.id === tripId; });
       var route = ROUTES.find(function(r){ return r.destination === (t?t.destination:''); });
       var dist = route ? parseFloat(route.distanceKM||0) : 0;
-      var rate = parseFloat(SETTINGS.mileageRate || 500);
+      var mileageAmt = _routeMileageAmount(t?t.destination:'');
       var record = {
         id: uuid(), reqNo: nextId(FUEL_REQUESTS,'MGR-','reqNo'),
         requestType: 'MILEAGE', currency: 'TZS',
         tripId: tripId, tripNo: t?t.tripNo:'', horse: t?t.horse:'', driver: t?t.driver:'',
-        route: t?t.destination:'', distanceKM: dist, ratePerKM: rate,
-        amountTZS: dist * rate, amountUSD: 0,
+        route: t?t.destination:'', distanceKM: dist, ratePerKM: 0,
+        amountTZS: mileageAmt, amountUSD: 0,
         description: 'Mileage — ' + (t?t.destination:'') + ' (' + dist + 'km)',
         issuanceStage: 'Mileage',
         status: 'PENDING', requestedBy: reqby.toUpperCase(), requestedAt: today(),
@@ -8580,7 +8675,30 @@ function onPermitVehicleChange(){
   }
 }
 function onPermitTypeChange(){var type=document.getElementById('pmt-type').value;document.getElementById('pmt-applies').value=PERMIT_APPLIES[type]||'';calcPermitExpiry();}
-function calcPermitExpiry(){var date=document.getElementById('pmt-date').value;var type=document.getElementById('pmt-type').value;if(!date||!type)return;var months=PERMIT_DURATIONS[type]||12;var exp=new Date(date);exp.setMonth(exp.getMonth()+months);exp.setDate(exp.getDate()-1);document.getElementById('pmt-expiry').value=exp.toISOString().split('T')[0];}
+function calcPermitExpiry(){
+  var date=document.getElementById('pmt-date').value;var type=document.getElementById('pmt-type').value;if(!date||!type)return;
+  var payDate=new Date(date);
+  var exp;
+  if (type === 'C28') {
+    // C28 always expires 31 Dec of the SAME calendar year it was paid in
+    // - not a rolling duration like every other permit type. Paid in
+    // January or paid in November both expire the same year-end.
+    exp = new Date(payDate.getFullYear(), 11, 31);
+  } else {
+    var months=PERMIT_DURATIONS[type]||12;
+    exp=new Date(date);exp.setMonth(exp.getMonth()+months);exp.setDate(exp.getDate()-1);
+  }
+  // Build the YYYY-MM-DD string from the date object's own LOCAL
+  // components, instead of going through toISOString() (which converts
+  // to UTC first). For any timezone ahead of UTC - including East
+  // Africa Time, UTC+3 - that UTC conversion silently shifts local
+  // midnight back onto the previous day, which is exactly why C28 was
+  // showing 30 Dec instead of 31 Dec.
+  var y = exp.getFullYear();
+  var m = String(exp.getMonth()+1).padStart(2,'0');
+  var d = String(exp.getDate()).padStart(2,'0');
+  document.getElementById('pmt-expiry').value = y+'-'+m+'-'+d;
+}
 async function uploadPmtDocFile() {
   var vehicle = document.getElementById('pmt-vehicle').value;
   var type    = document.getElementById('pmt-type').value;
@@ -8702,9 +8820,8 @@ function onTripFuelTripChange(){
   var id=document.getElementById('tfuel-trip').value;var t=TRIPS.find(function(x){return x.id===id;});if(!t)return;
   document.getElementById('tfuel-horse').value=t.horse||'';document.getElementById('tfuel-driver').value=t.driver||'';document.getElementById('tfuel-route').value=t.destination||'';
   var tf=TRUCK_FUEL.find(function(x){return(x.truck||'').toUpperCase()===(t.horse||'').toUpperCase();});
-  var base=tf?parseFloat(tf.baseFuel||0):0;var dest=(t.destination||'').toLowerCase();
-  var reducL=parseFloat(SETTINGS.fuelReducLusaka)||150;var reducN=parseFloat(SETTINGS.fuelReducNdola)||250;
-  var ratio=base;if(dest.includes('lusaka'))ratio=base-reducL;else if(dest.includes('ndola'))ratio=base-reducN;
+  var base=tf?parseFloat(tf.baseFuel||0):0;
+  var ratio=base + _routeFuelAdjust(t.destination);
   document.getElementById('tfuel-ratio').value=ratio>0?ratio+' ltrs':'Not configured (set in Settings → Truck Fuel Config)';window._currentFuelRatio=ratio;
 }
 function onTripFuelStageChange(){
@@ -8795,46 +8912,72 @@ function renderDashboard(){updateBadges();}
 function renderSettings(){
   ['companyName','companyAddress','companyPhone','companyEmail','fuelPrice','fuelLossRate','mileageRate','preloadingDefault','lowBalanceThreshold','expiryAlertDays'].forEach(function(f){var el=document.getElementById('set-'+f);if(el)el.value=SETTINGS[f]!==undefined?SETTINGS[f]:'';});
   ['tollTunduma','tollSakania','bondFee','gpsTracking','exchangeRate'].forEach(function(f){var el=document.getElementById('set-'+f);if(el)el.value=SETTINGS[f]||'';});
-  var rl=document.getElementById('fuel-reduc-lusaka');var rn=document.getElementById('fuel-reduc-ndola');
-  if(rl)rl.textContent=SETTINGS.fuelReducLusaka||150;if(rn)rn.textContent=SETTINGS.fuelReducNdola||250;
   renderRoutesTable();renderTruckFuelTable();renderPermitRatesTable();renderTransportRatesTable();
 }
 function renderRoutesTable(){
   var tbody=document.getElementById('routes-tbody');if(!tbody)return;
   tbody.innerHTML=ROUTES.map(function(r,i){
     return '<tr><td><input value="'+esc(r.name)+'" id="rt-name-'+i+'" style="width:100%"></td>'
-      +'<td><select id="rt-dest-'+i+'">'+['Ndola','Lusaka','Solwezi','Lubumbashi'].map(function(d){return '<option'+(d===r.destination?' selected':'')+'>'+d+'</option>';}).join('')+'</select></td>'
+      +'<td><select id="rt-dest-'+i+'" onchange="updateRouteBorder(this,'+i+')">'+['Ndola','Lusaka','Solwezi','Lubumbashi'].map(function(d){return '<option'+(d===r.destination?' selected':'')+'>'+d+'</option>';}).join('')+'</select></td>'
       +'<td><input value="'+esc(r.border)+'" id="rt-border-'+i+'" readonly style="background:#f5f5f7"></td>'
       +'<td><input type="number" value="'+(r.distanceKM||'')+'" id="rt-dist-'+i+'" style="width:100%"></td>'
+      +'<td><input type="number" min="0" value="'+(r.mileageAmount||'')+'" id="rt-mileage-'+i+'" style="width:100%" placeholder="e.g. 150000"></td>'
       +'<td><input type="number" value="'+(r.fuelReducLtrs||'')+'" id="rt-reduc-'+i+'" style="width:100%"></td>'
       +'<td><button onclick="deleteRouteRow(\''+r.id+'\')" style="background:none;border:none;color:#b91c1c;cursor:pointer;font-size:14px">✕</button></td></tr>';
   }).join('');
 }
-function addRouteRow(){ROUTES.push({id:uuid(),name:'',destination:'Ndola',border:'Tunduma',distanceKM:0,fuelReducLtrs:0});renderRoutesTable();}
+function addRouteRow(){ROUTES.push({id:uuid(),name:'',destination:'Ndola',border:'Tunduma',distanceKM:0,mileageAmount:0,fuelReducLtrs:0,_isNew:true});renderRoutesTable();}
+function updateRouteBorder(sel, i) {
+  var bm = {Ndola:'Tunduma',Lusaka:'Tunduma',Solwezi:'Tunduma',Lubumbashi:'Sakania'};
+  var borderInput = document.getElementById('rt-border-'+i);
+  if (borderInput) borderInput.value = bm[sel.value] || '';
+}
 function deleteRouteRow(id){ROUTES=ROUTES.filter(function(r){return r.id!==id;});renderRoutesTable();}
 function renderTruckFuelTable(){
   var tbody=document.getElementById('fuel-config-tbody');if(!tbody)return;
   var horses=VEHICLES.filter(function(v){return!(v.vehicleType||'').toLowerCase().includes('trailer');});
-  var reducL=parseFloat(SETTINGS.fuelReducLusaka)||150,reducN=parseFloat(SETTINGS.fuelReducNdola)||250;
+
+  // Header row grows/shrinks with however many routes exist in Settings
+  // -> Routes, instead of hardcoding a fixed 4 destinations. Adding or
+  // removing a route here immediately adds/removes its column.
+  var theadRow = document.getElementById('fuel-config-thead-row');
+  if (theadRow) {
+    theadRow.innerHTML = '<th>Truck (Horse)</th><th>Base Fuel (ltrs)</th><th>Fuel Stage</th>'
+      + ROUTES.map(function(r){
+          var adj = parseFloat(r.fuelReducLtrs)||0;
+          var label = adj===0 ? '(=base)' : (adj>0 ? '(+'+adj+')' : '('+adj+')');
+          return '<th>'+esc(r.destination||r.name||'—')+' '+label+'</th>';
+        }).join('');
+  }
+
   tbody.innerHTML=horses.map(function(v){
     var plate=v.plate||v.code||'';
     var tf=TRUCK_FUEL.find(function(x){return(x.truck||'').toUpperCase()===plate.toUpperCase();});
     var base=tf?parseFloat(tf.baseFuel||0):0;
     var stage=tf?(tf.fuelStage||'Split'):'Split';
     return '<tr><td><b>'+esc(plate)+'</b></td>'
-      +'<td><input type="number" min="0" value="'+(base||'')+'" id="tf-'+plate+'" style="width:90px" oninput="updateFuelRow(this,\''+plate+'\','+reducL+','+reducN+')"></td>'
+      +'<td><input type="number" min="0" value="'+(base||'')+'" id="tf-'+plate+'" style="width:90px" oninput="updateFuelRow(this,\''+plate+'\')"></td>'
       +'<td><select id="tfs-'+plate+'" style="font-size:12px;padding:4px 6px;border:1px solid #d2d2d7;border-radius:6px">'
       +'<option'+(stage==='Split'?' selected':'')+'>Split</option>'
       +'<option'+(stage==='Full at Once'?' selected':'')+'>Full at Once</option>'
       +'</select></td>'
-      +'<td id="tf-lusaka-'+plate+'">'+(base?base-reducL:'—')+'</td><td id="tf-ndola-'+plate+'">'+(base?base-reducN:'—')+'</td>'
-      +'<td id="tf-solwezi-'+plate+'">'+(base||'—')+'</td><td id="tf-lubum-'+plate+'">'+(base||'—')+'</td></tr>';
+      + ROUTES.map(function(r){
+          var adj = parseFloat(r.fuelReducLtrs)||0;
+          var val = base ? (base + adj) : 0;
+          var destKey = (r.destination||r.name||'').replace(/[^a-zA-Z0-9]/g,'');
+          return '<td id="tf-route-'+plate+'-'+destKey+'">'+(base?val:'—')+'</td>';
+        }).join('')
+      + '</tr>';
   }).join('');
 }
-function updateFuelRow(inp,plate,reducL,reducN){
+function updateFuelRow(inp,plate){
   var base=parseFloat(inp.value)||0;
-  var s=function(id,val){var el=document.getElementById(id);if(el)el.textContent=val||'—';};
-  s('tf-lusaka-'+plate,base?base-reducL:'');s('tf-ndola-'+plate,base?base-reducN:'');s('tf-solwezi-'+plate,base||'');s('tf-lubum-'+plate,base||'');
+  var s=function(id,val){var el=document.getElementById(id);if(el)el.textContent=(val===''||val===null||typeof val==='undefined')?'—':val;};
+  ROUTES.forEach(function(r){
+    var adj = parseFloat(r.fuelReducLtrs)||0;
+    var destKey = (r.destination||r.name||'').replace(/[^a-zA-Z0-9]/g,'');
+    s('tf-route-'+plate+'-'+destKey, base ? (base + adj) : '');
+  });
 }
 function renderPermitRatesTable(){
   var tbody=document.getElementById('permit-rates-tbody');if(!tbody)return;
@@ -8861,8 +9004,24 @@ async function saveAllSettings(){
     var record={};
     ['companyName','companyAddress','companyPhone','companyEmail','fuelPrice','fuelLossRate','mileageRate','preloadingDefault','lowBalanceThreshold','expiryAlertDays','tollTunduma','tollSakania','bondFee','gpsTracking','exchangeRate'].forEach(function(f){var el=document.getElementById('set-'+f);if(el)record[f]=el.value;});
     await callAPI('saveSettings',{record:record});SETTINGS=Object.assign(SETTINGS,record);
-    var routes=ROUTES.map(function(r,i){var destEl=document.getElementById('rt-dest-'+i);var dest=destEl?destEl.value:r.destination;var bm={Ndola:'Tunduma',Lusaka:'Tunduma',Solwezi:'Tunduma',Lubumbashi:'Sakania'};return Object.assign({},r,{name:(document.getElementById('rt-name-'+i)||{}).value||r.name,destination:dest,border:bm[dest]||r.border,distanceKM:parseFloat((document.getElementById('rt-dist-'+i)||{}).value||r.distanceKM)||0,fuelReducLtrs:parseFloat((document.getElementById('rt-reduc-'+i)||{}).value||r.fuelReducLtrs)||0});});
-    for(var i=0;i<routes.length;i++){await callAPI('updateRoute',{record:routes[i]});ROUTES[i]=routes[i];}
+    var routes=ROUTES.map(function(r,i){var destEl=document.getElementById('rt-dest-'+i);var dest=destEl?destEl.value:r.destination;var bm={Ndola:'Tunduma',Lusaka:'Tunduma',Solwezi:'Tunduma',Lubumbashi:'Sakania'};return Object.assign({},r,{name:(document.getElementById('rt-name-'+i)||{}).value||r.name,destination:dest,border:bm[dest]||r.border,distanceKM:parseFloat((document.getElementById('rt-dist-'+i)||{}).value||r.distanceKM)||0,mileageAmount:parseFloat((document.getElementById('rt-mileage-'+i)||{}).value||r.mileageAmount)||0,fuelReducLtrs:parseFloat((document.getElementById('rt-reduc-'+i)||{}).value||r.fuelReducLtrs)||0});});
+    var routeErrors = [];
+    for(var i=0;i<routes.length;i++){
+      // A brand-new route (added via "+ Add Route" this session) has
+      // never been saved before, so it must go through addRoute, not
+      // updateRoute — the backend's updateRoute fails with "Record not
+      // found" for an id it's never seen, and that failure used to be
+      // silently ignored here, meaning a new route could look saved on
+      // screen while never actually reaching the sheet at all.
+      var isNew = routes[i]._isNew;
+      delete routes[i]._isNew;
+      var res = isNew
+        ? await callAPI('addRoute', {record: routes[i]})
+        : await callAPI('updateRoute', {record: routes[i]});
+      if (res && res.error) { routeErrors.push((routes[i].destination||'route '+(i+1)) + ': ' + res.error); continue; }
+      ROUTES[i]=routes[i];
+    }
+    if (routeErrors.length) throw new Error('Route(s) failed to save — ' + routeErrors.join('; '));
     var horses=VEHICLES.filter(function(v){return!(v.vehicleType||'').toLowerCase().includes('trailer');});
     var tfRecords=horses.map(function(v){var plate=v.plate||v.code||'';var el=document.getElementById('tf-'+plate);var stageEl=document.getElementById('tfs-'+plate);var existing=TRUCK_FUEL.find(function(x){return(x.truck||'').toUpperCase()===plate.toUpperCase();});return{id:existing?existing.id:uuid(),truck:plate,baseFuel:parseFloat(el?el.value:0)||0,fuelStage:stageEl?stageEl.value:'Split'};}).filter(function(r){return r.baseFuel>0;});
     if(tfRecords.length){await callAPI('saveTruckFuelConfig',{records:tfRecords});TRUCK_FUEL=tfRecords;}
@@ -9725,7 +9884,13 @@ function editPermitRecord(id) {
     document.getElementById('pmt-type').value    = p.permitType || '';
     onPermitTypeChange();
     document.getElementById('pmt-date').value    = p.paymentDate || '';
-    document.getElementById('pmt-expiry').value  = p.expiryDate || '';
+    // Recalculate expiry using the current rule for this permit type,
+    // instead of trusting whatever was saved before - setting .value
+    // directly (as above) never fires the date field's onchange event,
+    // so without this explicit call, an older record's stale expiry
+    // (calculated under an old/different rule) would just get silently
+    // re-saved unchanged even after opening and saving it again.
+    calcPermitExpiry();
     document.getElementById('pmt-amount').value  = p.amountPaid || '';
     document.getElementById('pmt-receipt').value = p.receiptNo || '';
     document.getElementById('pmt-docurl').value  = p.documentUrl || '';
@@ -10032,13 +10197,13 @@ async function autoCreateLoadingRequests(t) {
   if (!hasMileage) {
     var route = ROUTES.find(function(r){ return r.destination === t.destination; });
     var dist  = route ? parseFloat(route.distanceKM||0) : 0;
-    var mRate = parseFloat(SETTINGS.mileageRate||500);
+    var mileageAmt = _routeMileageAmount(t.destination);
     var mRec  = {
       id: uuid(), reqNo: nextId(FUEL_REQUESTS,'MGR-','reqNo'),
       requestType: 'MILEAGE', currency: 'TZS',
       tripId: t.id, tripNo: t.tripNo, horse: t.horse, driver: t.driver,
-      route: t.destination, distanceKM: dist, ratePerKM: mRate,
-      amountTZS: dist * mRate, amountUSD: 0,
+      route: t.destination, distanceKM: dist, ratePerKM: 0,
+      amountTZS: mileageAmt, amountUSD: 0,
       description: 'Mileage — ' + t.destination + (dist?' ('+dist+'km)':''),
       issuanceStage: 'Mileage',
       status: 'PENDING', requestedBy: reqBy, requestedAt: t.loadingDate,
@@ -10096,13 +10261,7 @@ async function autoCreateLoadingRequests(t) {
   });
   if (!hasFuel) {
     var baseFuel = tf ? parseFloat(tf.baseFuel||0) : 0;
-    var dest     = (t.destination||'').toLowerCase();
-    var reducL   = parseFloat(SETTINGS.fuelReducLusaka||150);
-    var reducN   = parseFloat(SETTINGS.fuelReducNdola||250);
-    var ratio    = baseFuel;
-    if (dest.includes('lusaka'))      ratio = baseFuel - reducL;
-    else if (dest.includes('ndola'))  ratio = baseFuel - reducN;
-    else if (dest.includes('solwezi'))ratio = baseFuel - reducL;
+    var ratio    = baseFuel + _routeFuelAdjust(t.destination);
     var preload  = parseInt(SETTINGS.preloadingDefault||100);
     var postLtrs = Math.max(0, ratio - preload);
     var fuelPrice= parseFloat(SETTINGS.fuelPrice||3200);
@@ -10151,10 +10310,10 @@ function openMileageReq() {
       document.getElementById('mlg-dest').value   = t.destination || '';
       var route = ROUTES.find(function(r){ return r.destination === t.destination; });
       var dist = route ? parseFloat(route.distanceKM||0) : 0;
-      var rate = parseFloat(SETTINGS.mileageRate || 500);
+      var mileageAmt = _routeMileageAmount(t.destination);
       document.getElementById('mlg-dist').value   = dist ? dist + ' km' : 'Not configured';
-      document.getElementById('mlg-rate').value   = 'TZS ' + fmt(rate) + '/km';
-      document.getElementById('mlg-amount').value = dist ? 'TZS ' + fmt(dist * rate) : '—';
+      document.getElementById('mlg-rate').value   = route && parseFloat(route.mileageAmount)>0 ? 'Fixed amount (set in Routes)' : 'TZS ' + fmt(parseFloat(SETTINGS.mileageRate||500)) + '/km (fallback)';
+      document.getElementById('mlg-amount').value = mileageAmt ? 'TZS ' + fmt(mileageAmt) : '—';
     },
     onSave: async function() {
       var tripId = document.getElementById('mlg-trip').value;
@@ -10163,13 +10322,13 @@ function openMileageReq() {
       var t = TRIPS.find(function(x){ return x.id === tripId; });
       var route = ROUTES.find(function(r){ return r.destination === (t?t.destination:''); });
       var dist = route ? parseFloat(route.distanceKM||0) : 0;
-      var rate = parseFloat(SETTINGS.mileageRate || 500);
+      var mileageAmt = _routeMileageAmount(t?t.destination:'');
       var record = {
         id: uuid(), reqNo: nextId(FUEL_REQUESTS,'MGR-','reqNo'),
         requestType: 'MILEAGE', currency: 'TZS',
         tripId: tripId, tripNo: t?t.tripNo:'', horse: t?t.horse:'', driver: t?t.driver:'',
-        route: t?t.destination:'', distanceKM: dist, ratePerKM: rate,
-        amountTZS: dist * rate, amountUSD: 0,
+        route: t?t.destination:'', distanceKM: dist, ratePerKM: 0,
+        amountTZS: mileageAmt, amountUSD: 0,
         description: 'Mileage — ' + (t?t.destination:'') + ' (' + dist + 'km)',
         issuanceStage: 'Mileage',
         status: 'PENDING', requestedBy: reqby.toUpperCase(), requestedAt: today(),
@@ -13271,14 +13430,10 @@ function renderReleasePnl() {
       var route = ROUTES.find(function(r){ return r.destination === t.destination; });
       var tf = TRUCK_FUEL.find(function(x){ return (x.truck||'').toUpperCase()===(t.horse||'').toUpperCase(); });
       var base = tf ? parseFloat(tf.baseFuel||0) : 0;
-      var reducL=parseFloat(SETTINGS.fuelReducLusaka||150), reducN=parseFloat(SETTINGS.fuelReducNdola||250);
-      var dest = (t.destination||'').toLowerCase();
-      var fuelRatio = base;
-      if (dest.includes('lusaka')) fuelRatio = base - reducL;
-      else if (dest.includes('ndola')) fuelRatio = base - reducN;
+      var fuelRatio = base + _routeFuelAdjust(t.destination);
       budgetFuel += fuelRatio * parseFloat(SETTINGS.fuelPrice||3200);
       var dist = route ? parseFloat(route.distanceKM||0) : 0;
-      budgetMileage += dist * parseFloat(SETTINGS.mileageRate||500);
+      budgetMileage += _routeMileageAmount(t.destination);
       var border = t.border||'';
       budgetToll += border.toLowerCase().includes('sakania') ? parseFloat(SETTINGS.tollSakania||1535) : parseFloat(SETTINGS.tollTunduma||330);
       var permitTypes = ['COMESA','COMESA','Transit Permit','Transit Permit','Carbon Tax','ZABS'];
@@ -14359,9 +14514,29 @@ var RF_TABS = {
       ];
     }
   },
-  toll: {
+  tolltunduma: {
     type: 'ROAD_TOLL',
+    borderFilter: 'tunduma',
     label: 'Road Toll — Tunduma',
+    cols: ['☐','Req No','Date Requested','Release','Customer','Truck','Driver','Destination','Amount (USD)','By','Status','Actions'],
+    row: function(r, t) {
+      var rel = RELEASES.find(function(x){ return x.releaseNo===(r.releaseNo||(t?t.releaseNo:''));});
+      return [
+        '', esc(r.reqNo||'—'), fmtDate(r.requestedAt||''),
+        esc(r.releaseNo||(t?t.releaseNo:'')||'—'),
+        esc(rel?rel.customer||(t?t.customer:'—'):(t?t.customer||'—':'—')),
+        esc(r.horse||(t?t.horse:'')||'—'),
+        esc(t?t.driver||'—':'—'),
+        esc(r.destination||(t?t.destination:'')||'—'),
+        'USD '+fmtDec(r.amountUSD||0),
+        esc(r.requestedBy||'—'), r.status, ''
+      ];
+    }
+  },
+  tollsakania: {
+    type: 'ROAD_TOLL',
+    borderFilter: 'sakania',
+    label: 'Road Toll — Sakania',
     cols: ['☐','Req No','Date Requested','Release','Customer','Truck','Driver','Destination','Amount (USD)','By','Status','Actions'],
     row: function(r, t) {
       var rel = RELEASES.find(function(x){ return x.releaseNo===(r.releaseNo||(t?t.releaseNo:''));});
@@ -14460,19 +14635,22 @@ function initRfView() {
 function switchRfTab(tab) {
   _rfCurrentTab = tab;
   document.querySelectorAll('#rf-tabs .stab-btn').forEach(function(b, i){
-    b.classList.toggle('active', ['fuel','mileage','toll','permit','vehpermit','addexp'][i] === tab);
+    b.classList.toggle('active', ['fuel','mileage','tolltunduma','tollsakania','permit','vehpermit','addexp'][i] === tab);
   });
-  // Show correct filter panel
+  // Show correct filter panel — both toll tabs share the same underlying
+  // filter row (rff-toll), since they show identical columns, just
+  // filtered by border.
+  var panelKey = (tab==='tolltunduma'||tab==='tollsakania') ? 'toll' : tab;
   ['fuel','mileage','toll','permit','vehpermit','addexp'].forEach(function(t){
     var el = document.getElementById('rff-'+t);
-    if(el) el.style.display = t===tab ? 'block' : 'none';
+    if(el) el.style.display = t===panelKey ? 'block' : 'none';
   });
   renderRfTab();
 }
 
 // ── PREFIX MAP ────────────────────────────────────────────────────
-var RF_FILTER_PREFIX = {fuel:'FR', mileage:'MR', toll:'TR', permit:'PR', vehpermit:'VR', addexp:'ER'};
-var RF_STATUS_ID = {fuel:'rf-filter-status', mileage:'rf-filter-status-m', toll:'rf-filter-status-t', permit:'rf-filter-status-p', vehpermit:'rf-filter-status-v', addexp:'rf-filter-status-e'};
+var RF_FILTER_PREFIX = {fuel:'FR', mileage:'MR', tolltunduma:'TR', tollsakania:'TR', permit:'PR', vehpermit:'VR', addexp:'ER'};
+var RF_STATUS_ID = {fuel:'rf-filter-status', mileage:'rf-filter-status-m', tolltunduma:'rf-filter-status-t', tollsakania:'rf-filter-status-t', permit:'rf-filter-status-p', vehpermit:'rf-filter-status-v', addexp:'rf-filter-status-e'};
 
 function getRfFilters(tab) {
   var p = RF_FILTER_PREFIX[tab]||'FR';
@@ -14583,6 +14761,7 @@ function renderRfTab() {
   } else {
     data = FUEL_REQUESTS.filter(function(r){
       if (r.requestType !== tabDef.type) return false;
+      if (tabDef.borderFilter && !(r.border||'').toLowerCase().includes(tabDef.borderFilter)) return false;
       if (sfilt && (r.status||'').toUpperCase() !== sfilt.toUpperCase()) return false;
       for(var i=0;i<filters.length;i++){
         var fi=filters[i];
@@ -14782,7 +14961,8 @@ function rfPrintSelected() {
   var titleMap = {
     fuel:    'FUEL REQUEST FORM',
     mileage: 'MILEAGE REQUEST FORM',
-    toll:    'ROAD TOLL REQUEST FORM — TUNDUMA',
+    tolltunduma: 'ROAD TOLL REQUEST FORM — TUNDUMA',
+    tollsakania: 'ROAD TOLL REQUEST FORM — SAKANIA',
     permit:  'TRIP PERMITS REQUEST FORM',
     addexp:  'ADDITIONAL EXPENSE REQUEST FORM'
   };
@@ -14797,19 +14977,20 @@ function rfPrintSelected() {
     totalBonusTZS += parseFloat(r.bonusTZS||0);
     if (_rfCurrentTab==='fuel') return '<tr><td>'+esc(r.releaseNo||'—')+'</td><td><b>'+esc(r.tripNo||'—')+'</b></td><td>'+esc(r.horse||'—')+'</td><td>'+esc(t?t.driver||'—':'—')+'</td><td>'+esc(drv?drv.licenseNo||'—':'—')+'</td><td>'+esc(t?t.destination||'—':'—')+'</td><td style="text-align:right">'+fmt(r.litres||0)+'</td><td style="text-align:right;font-weight:700">'+fmt(r.amountTZS||0)+'</td></tr>';
     if (_rfCurrentTab==='mileage') return '<tr><td>'+esc(r.releaseNo||'—')+'</td><td><b>'+esc(r.tripNo||'—')+'</b></td><td>'+esc(r.horse||'—')+'</td><td>'+esc(t?t.driver||'—':'—')+'</td><td>'+esc(t?t.destination||'—':'—')+'</td><td style="text-align:right;font-weight:700">'+fmt(r.amountTZS||0)+'</td><td style="text-align:right">'+(r.bonusTZS>0?fmt(r.bonusTZS):'—')+'</td></tr>';
-    if (_rfCurrentTab==='toll')    return '<tr><td>'+esc(r.releaseNo||'—')+'</td><td><b>'+esc(r.tripNo||'—')+'</b></td><td>'+esc(r.horse||'—')+'</td><td>'+esc(t?t.driver||'—':'—')+'</td><td>'+esc(t?t.destination||'—':'—')+'</td><td style="text-align:right;font-weight:700">'+fmtDec(r.amountUSD||0)+'</td></tr>';
+    if (_rfCurrentTab==='tolltunduma'||_rfCurrentTab==='tollsakania') return '<tr><td>'+esc(r.releaseNo||'—')+'</td><td><b>'+esc(r.tripNo||'—')+'</b></td><td>'+esc(r.horse||'—')+'</td><td>'+esc(t?t.driver||'—':'—')+'</td><td>'+esc(t?t.destination||'—':'—')+'</td><td style="text-align:right;font-weight:700">'+fmtDec(r.amountUSD||0)+'</td></tr>';
     if (_rfCurrentTab==='addexp')  return '<tr><td>'+esc(r.horse||'—')+'</td><td>'+esc(r.driver||'—')+'</td><td>'+esc(r.tripNo||'—')+'</td><td>'+esc(r.expenseType||'—')+'</td><td>'+esc(r.description||'—')+'</td><td>'+esc(r.supplier||'—')+'</td><td style="text-align:right">'+(r.qty?fmt(r.qty):'—')+'</td><td>'+esc(r.unit||'—')+'</td><td style="text-align:right;font-weight:700">'+fmt(r.amountTZS||0)+'</td><td>'+esc(r.chargeTo||'—')+'</td></tr>';
     return '<tr><td>'+esc(r.releaseNo||'—')+'</td><td><b>'+esc(r.tripNo||'—')+'</b></td><td>'+esc(r.horse||'—')+'</td><td>'+esc(t?t.driver||'—':'—')+'</td><td>'+esc(r.permitType||r.description||'—')+'</td><td>'+esc(t?t.destination||'—':'—')+'</td><td style="text-align:right;font-weight:700">'+fmt(r.amountTZS||0)+'</td><td>'+fmtDate(r.permitExpiry||'')+'</td></tr>';
   }).join('');
   var theadMap = {
     fuel:    '<tr><th>Release</th><th>Trip No</th><th>Truck</th><th>Driver</th><th>License No</th><th>Destination</th><th style="text-align:right">Litres</th><th style="text-align:right">Amount (TZS)</th></tr>',
     mileage: '<tr><th>Release</th><th>Trip No</th><th>Truck</th><th>Driver</th><th>Destination</th><th style="text-align:right">Amount (TZS)</th><th style="text-align:right">Bonus (TZS)</th></tr>',
-    toll:    '<tr><th>Release</th><th>Trip No</th><th>Truck</th><th>Driver</th><th>Destination</th><th style="text-align:right">Amount (USD)</th></tr>',
+    tolltunduma: '<tr><th>Release</th><th>Trip No</th><th>Truck</th><th>Driver</th><th>Destination</th><th style="text-align:right">Amount (USD)</th></tr>',
+    tollsakania: '<tr><th>Release</th><th>Trip No</th><th>Truck</th><th>Driver</th><th>Destination</th><th style="text-align:right">Amount (USD)</th></tr>',
     permit:  '<tr><th>Release</th><th>Trip No</th><th>Truck</th><th>Driver</th><th>Permit Type</th><th>Destination</th><th style="text-align:right">Amount (TZS)</th><th>Expiry</th></tr>',
     addexp:  '<tr><th>Truck</th><th>Driver</th><th>Trip</th><th>Type</th><th>Description</th><th>Supplier</th><th style="text-align:right">Qty</th><th>Unit</th><th style="text-align:right">Amount (TZS)</th><th>Charge To</th></tr>'
   };
   var tfootRows;
-  if (_rfCurrentTab === 'toll') {
+  if (_rfCurrentTab === 'tolltunduma' || _rfCurrentTab === 'tollsakania') {
     tfootRows = '<tr><td colspan="5" style="text-align:right">TOTAL</td><td style="text-align:right">USD '+fmtDec(totalAmtUSD)+'</td></tr>';
   } else if (_rfCurrentTab === 'fuel') {
     tfootRows = '<tr><td colspan="6" style="text-align:right">TOTAL</td><td style="text-align:right">'+fmt(totalLtrs)+' Ltrs</td><td style="text-align:right">TZS '+fmt(totalAmtTZS)+'</td></tr>';
@@ -14821,7 +15002,7 @@ function rfPrintSelected() {
   } else {
     tfootRows = '<tr><td colspan="8" style="text-align:right">TOTAL</td><td style="text-align:right">TZS '+fmt(totalAmtTZS)+'</td><td></td></tr>';
   }
-  var extraInfo = _rfCurrentTab==='fuel'?'<p style="font-size:11px;color:#444;margin-bottom:10px">Fuel Price: TZS '+fmt(fuelPrice)+'/ltr</p>':_rfCurrentTab==='toll'?'<p style="font-size:11px;color:#444;margin-bottom:10px">Border: Tunduma &nbsp;&nbsp; Rate: USD '+fmtDec(parseFloat(SETTINGS.tollTunduma||330))+' per truck</p>':'';
+  var extraInfo = _rfCurrentTab==='fuel'?'<p style="font-size:11px;color:#444;margin-bottom:10px">Fuel Price: TZS '+fmt(fuelPrice)+'/ltr</p>':_rfCurrentTab==='tolltunduma'?'<p style="font-size:11px;color:#444;margin-bottom:10px">Border: Tunduma &nbsp;&nbsp; Rate: USD '+fmtDec(parseFloat(SETTINGS.tollTunduma||330))+' per truck</p>':_rfCurrentTab==='tollsakania'?'<p style="font-size:11px;color:#444;margin-bottom:10px">Border: Sakania &nbsp;&nbsp; Rate: USD '+fmtDec(parseFloat(SETTINGS.tollSakania||1535))+' per truck</p>':'';
   var reqby = recs[0] ? recs[0].requestedBy||'' : '';
   _printFormWindow({
     title: titleMap[_rfCurrentTab],
@@ -15701,7 +15882,7 @@ function renderBudget() {
     // Group header row — Trip/Truck now 2 cols so Release & Trip = 8
     + '<tr style="background:#0a2d6e">'
     + '<th style="'+thLeft+'" colspan="8">RELEASE &amp; TRIP</th>'
-    + '<th style="'+thBase+';background:#1a6b3c" colspan="3">OPERATIONAL</th>'
+    + '<th style="'+thBase+';background:#1a6b3c" colspan="4">OPERATIONAL</th>'
     + '<th style="'+thBase+';background:#7c3aed" colspan="1">DRIVER</th>'
     + '<th style="'+thBase+';background:#166534" colspan="6">TRIP PERMITS</th>'
     + '<th style="'+thBase+';background:#92400e" colspan="6">VEHICLE PERMITS</th>'
@@ -15717,7 +15898,8 @@ function renderBudget() {
     + '<th style="'+thLeft+'">Truck</th>'
     + '<th style="'+thBase+'">Driver</th>'
     + '<th style="'+thBase+';background:#1a6b3c">Mile</th>'
-    + '<th style="'+thBase+';background:#1a6b3c">Toll</th>'
+    + '<th style="'+thBase+';background:#1a6b3c">Toll (Tunduma)</th>'
+    + '<th style="'+thBase+';background:#1a6b3c">Toll (Sakania)</th>'
     + '<th style="'+thBase+';background:#1a6b3c">Fuel</th>'
     + '<th style="'+thBase+';background:#7c3aed">Shortage</th>'
     + '<th style="'+thBase+';background:#166534">COM-H</th>'
@@ -15764,6 +15946,20 @@ function renderBudget() {
 
     function reqStatus(type) {
       var r = FUEL_REQUESTS.filter(function(x){return x.tripId===t.id&&x.requestType===type;})
+        .sort(function(a,b){return new Date(b.createdAt||0)-new Date(a.createdAt||0);})[0];
+      if(!r) return {icon:dash()+'<span style="'+lblStyle+';color:#9ca3af">none</span>',bg:'',tip:'Not Requested'};
+      var s=(r.status||'').toUpperCase();
+      if(s==='PAID')     return {icon:tick()+'<span style="'+lblStyle+';color:#166534">paid</span>',bg:'#f0fdf4',tip:'Paid'};
+      if(s==='APPROVED') return {icon:tick()+'<span style="'+lblStyle+';color:#166534">done</span>',bg:'#f0fdf4',tip:'Approved'};
+      if(s==='PENDING')  return {icon:circle('#f59e0b')+'<span style="'+lblStyle+';color:#92400e">pending</span>',bg:'#fffbeb',tip:'Pending Approval'};
+      if(s==='REJECTED') return {icon:circle('#ef4444')+'<span style="'+lblStyle+';color:#b91c1c">rejected</span>',bg:'#fef2f2',tip:'Rejected'};
+      return {icon:dash()+'<span style="'+lblStyle+';color:#9ca3af">none</span>',bg:'',tip:'Not Requested'};
+    }
+
+    function tollStatus(borderName) {
+      var tripBorder = (t.border||'').toLowerCase();
+      if (!tripBorder.includes(borderName)) return {icon:dash()+'<span style="'+lblStyle+';color:#d1d5db">n/a</span>',bg:'',tip:'N/A — this trip uses a different border'};
+      var r = FUEL_REQUESTS.filter(function(x){return x.tripId===t.id&&x.requestType==='ROAD_TOLL';})
         .sort(function(a,b){return new Date(b.createdAt||0)-new Date(a.createdAt||0);})[0];
       if(!r) return {icon:dash()+'<span style="'+lblStyle+';color:#9ca3af">none</span>',bg:'',tip:'Not Requested'};
       var s=(r.status||'').toUpperCase();
@@ -15886,7 +16082,8 @@ function renderBudget() {
       + '<td style="padding:10px 10px;font-size:11px;font-weight:600;color:var(--t2);white-space:nowrap;'+sepStyle+'">'+esc(horse||'—')+'</td>'
       + '<td style="padding:10px 10px;font-size:11px;color:var(--t2);max-width:150px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+esc(t.driver||'—')+'</td>'
       + cell(reqStatus('MILEAGE'))
-      + cell(reqStatus('ROAD_TOLL'))
+      + cell(tollStatus('tunduma'))
+      + cell(tollStatus('sakania'))
       + cell(fuelStatus())
       + cell(driverShortageStatus(t.driver))
       + cell(tripPermitStatus('COMESA','Horse'))
@@ -15965,11 +16162,15 @@ function openBulkRequest() {
     return (r.status||'').toLowerCase();
   }
   // Check what needs requesting across all selected trips
-  var needsMileage=0, needsToll=0, needsFuel=0, needsFuelFull=0;
+  var needsMileage=0, needsTollTunduma=0, needsTollSakania=0, needsFuel=0, needsFuelFull=0;
+  var totalTunduma=0, totalSakania=0;
 
   selectedTrips.forEach(function(t){
     if(getReqStatus(t.id,'MILEAGE')==='none'||getReqStatus(t.id,'MILEAGE')==='rejected') needsMileage++;
-    if(getReqStatus(t.id,'ROAD_TOLL')==='none'||getReqStatus(t.id,'ROAD_TOLL')==='rejected') needsToll++;
+    var tBorder = (t.border||'').toLowerCase();
+    var tollAlreadyReq = getReqStatus(t.id,'ROAD_TOLL')!=='none' && getReqStatus(t.id,'ROAD_TOLL')!=='rejected';
+    if (tBorder.includes('sakania')) { totalSakania++; if(!tollAlreadyReq) needsTollSakania++; }
+    else { totalTunduma++; if(!tollAlreadyReq) needsTollTunduma++; }
     var tf = TRUCK_FUEL ? TRUCK_FUEL.find(function(x){ return (x.truck||'').toUpperCase()===(t.horse||'').toUpperCase(); }) : null;
     var tStage = tf ? (tf.fuelStage||'Split') : 'Split';
     if(tStage==='Full at Once') {
@@ -16004,7 +16205,8 @@ function openBulkRequest() {
     // Section 1
     +'<div style="font-size:11px;font-weight:700;color:#0071e3;text-transform:uppercase;letter-spacing:.08em;margin-bottom:8px">&#128666; Operational</div>'
     +checkRow('mileage','🛣️ Mileage',needsMileage,n,'#0071e3')
-    +checkRow('toll','💵 Road Toll (Tunduma)',needsToll,n,'#0071e3')
+    +(totalTunduma>0 ? checkRow('tollTunduma','💵 Road Toll (Tunduma)',needsTollTunduma,totalTunduma,'#0071e3') : '')
+    +(totalSakania>0 ? checkRow('tollSakania','💵 Road Toll (Sakania)',needsTollSakania,totalSakania,'#0071e3') : '')
     +checkRow('fuel','⛽ Fuel (Pre-Loading)',needsFuel,n,'#0071e3')
     +checkRow('fuelFull','⛽ Fuel (Full at Once)',needsFuelFull,n,'#0071e3')
     +'<div style="margin-top:8px;padding:8px 12px;background:#fffaf0;border:1px solid #fde68a;border-radius:8px;font-size:11.5px;color:#92400e">Trip and Vehicle Permits are requested individually from the Permits &amp; Docs page (use the + Renew button per vehicle/permit type).</div>'
@@ -16143,25 +16345,26 @@ async function submitBulkRequest(andPrint) {
     var dist  = route ? parseFloat(route.distanceKM||0) : 0;
     var tf    = TRUCK_FUEL.find(function(x){return(x.truck||'').toUpperCase()===(t.horse||'').toUpperCase();});
     var base  = tf ? parseFloat(tf.baseFuel||0) : 0;
-    var reducL= parseFloat(SETTINGS.fuelReducLusaka||150);
-    var reducN= parseFloat(SETTINGS.fuelReducNdola||250);
-    var dest  = (t.destination||'').toLowerCase();
-    var fuelRatio = base;
-    if(dest.includes('lusaka')) fuelRatio=base-reducL;
-    else if(dest.includes('ndola')) fuelRatio=base-reducN;
+    var fuelRatio = base + _routeFuelAdjust(t.destination);
     var border = (t.border||'').toLowerCase();
     var tollRate= border.includes('sakania')?parseFloat(SETTINGS.tollSakania||1535):parseFloat(SETTINGS.tollTunduma||330);
 
     // Operational
     if(document.getElementById('br-mileage').checked && !alreadyExists(t.id,'MILEAGE')){
-      requests.push({id:uuid(),reqNo:nextId(FUEL_REQUESTS,'MGR-','reqNo'),requestType:'MILEAGE',currency:'TZS',tripId:t.id,tripNo:t.tripNo,horse:t.horse,trailer:t.trailer,driver:t.driver,route:t.destination,distanceKM:dist,ratePerKM:mileageRate,amountTZS:dist*mileageRate,amountUSD:0,description:'Mileage — '+t.destination,issuanceStage:'Mileage',status:'PENDING',requestedBy:reqby.toUpperCase(),requestedAt:today(),releaseNo:t.releaseNo});
+      requests.push({id:uuid(),reqNo:nextId(FUEL_REQUESTS,'MGR-','reqNo'),requestType:'MILEAGE',currency:'TZS',tripId:t.id,tripNo:t.tripNo,horse:t.horse,trailer:t.trailer,driver:t.driver,route:t.destination,distanceKM:dist,ratePerKM:0,amountTZS:_routeMileageAmount(t.destination),amountUSD:0,description:'Mileage — '+t.destination,issuanceStage:'Mileage',status:'PENDING',requestedBy:reqby.toUpperCase(),requestedAt:today(),releaseNo:t.releaseNo});
       FUEL_REQUESTS.push(requests[requests.length-1]); created++;
     } else if(document.getElementById('br-mileage').checked) skipped++;
 
-    if(document.getElementById('br-toll').checked && !alreadyExists(t.id,'ROAD_TOLL')){
+    var tripBorderLower = (t.border||'').toLowerCase();
+    var tollTundumaBox = document.getElementById('br-tollTunduma');
+    var tollSakaniaBox = document.getElementById('br-tollSakania');
+    var tollBoxChecked = tripBorderLower.includes('sakania')
+      ? (tollSakaniaBox && tollSakaniaBox.checked)
+      : (tollTundumaBox && tollTundumaBox.checked);
+    if(tollBoxChecked && !alreadyExists(t.id,'ROAD_TOLL')){
       requests.push({id:uuid(),reqNo:nextId(FUEL_REQUESTS,'RTR-','reqNo'),requestType:'ROAD_TOLL',currency:'USD',tripId:t.id,tripNo:t.tripNo,horse:t.horse,trailer:t.trailer,driver:t.driver,border:t.border,amountUSD:tollRate,amountTZS:0,description:'Road Toll — '+(t.border||''),issuanceStage:'Road Toll',status:'PENDING',requestedBy:reqby.toUpperCase(),requestedAt:today(),releaseNo:t.releaseNo});
       FUEL_REQUESTS.push(requests[requests.length-1]); created++;
-    } else if(document.getElementById('br-toll').checked) skipped++;
+    } else if(tollBoxChecked) skipped++;
 
     if(document.getElementById('br-fuel').checked && !alreadyExists(t.id,'TRIP')){
       requests.push({id:uuid(),reqNo:nextId(FUEL_REQUESTS,'TFR-','reqNo'),requestType:'TRIP',currency:'TZS',tripId:t.id,tripNo:t.tripNo,horse:t.horse,trailer:t.trailer,driver:t.driver,route:t.destination,issuanceStage:'Pre-Loading',litres:preload,fuelPricePerLtr:fuelPrice,amountTZS:preload*fuelPrice,amountUSD:0,description:'Fuel Pre-Loading',status:'PENDING',requestedBy:reqby.toUpperCase(),requestedAt:today(),releaseNo:t.releaseNo});
@@ -16173,11 +16376,7 @@ async function submitBulkRequest(andPrint) {
     if(fuelFullEl && fuelFullEl.checked && !FUEL_REQUESTS.some(function(r){ return r.tripId===t.id&&r.requestType==='TRIP'&&r.issuanceStage==='Full at Once'&&r.status!=='REJECTED'; })){
       var tfLocal = TRUCK_FUEL ? TRUCK_FUEL.find(function(x){ return (x.truck||'').toUpperCase()===(t.horse||'').toUpperCase(); }) : null;
       var baseLocal = tfLocal ? parseFloat(tfLocal.baseFuel||0) : 0;
-      var destL = (t.destination||'').toLowerCase();
-      var redL  = parseFloat(SETTINGS.fuelReducLusaka||150), redN = parseFloat(SETTINGS.fuelReducNdola||250);
-      var ratioFull = baseLocal;
-      if(destL.includes('lusaka')||destL.includes('solwezi')) ratioFull = baseLocal - redL;
-      else if(destL.includes('ndola')) ratioFull = baseLocal - redN;
+      var ratioFull = baseLocal + _routeFuelAdjust(t.destination);
       requests.push({id:uuid(),reqNo:nextId(FUEL_REQUESTS,'TFR-','reqNo'),requestType:'TRIP',currency:'TZS',tripId:t.id,tripNo:t.tripNo,horse:t.horse,trailer:t.trailer,driver:t.driver,route:t.destination,issuanceStage:'Full at Once',litres:ratioFull,fuelPricePerLtr:fuelPrice,amountTZS:ratioFull*fuelPrice,amountUSD:0,description:'Fuel Full at Once',status:'PENDING',requestedBy:reqby.toUpperCase(),requestedAt:today(),releaseNo:t.releaseNo});
       FUEL_REQUESTS.push(requests[requests.length-1]); created++;
     } else if(fuelFullEl && fuelFullEl.checked) skipped++;
@@ -16261,12 +16460,11 @@ function executePrintForms() {
 
   // ── MILEAGE FORM ──
   if(document.getElementById('pf-mileage-form').checked){
-    var mileageRate=parseFloat(SETTINGS.mileageRate||500);
     var reqby='';
     var rows=selectedTrips.map(function(t){
       var route=ROUTES.find(function(r){return r.destination===t.destination;});
       var dist=route?parseFloat(route.distanceKM||0):0;
-      var amt=dist*mileageRate;
+      var amt=_routeMileageAmount(t.destination);
       var mReq=FUEL_REQUESTS.filter(function(x){return x.tripId===t.id&&x.requestType==='MILEAGE';})[0];
       if(mReq&&mReq.requestedBy) reqby=mReq.requestedBy;
       var bonus = mReq ? parseFloat(mReq.bonusTZS||0) : 0;
@@ -16311,9 +16509,7 @@ function executePrintForms() {
     var fuelRows=selectedTrips.map(function(t){
       var tf=TRUCK_FUEL.find(function(x){return(x.truck||'').toUpperCase()===(t.horse||'').toUpperCase();});
       var base=tf?parseFloat(tf.baseFuel||0):0;
-      var reducL=parseFloat(SETTINGS.fuelReducLusaka||150),reducN=parseFloat(SETTINGS.fuelReducNdola||250);
-      var dest=(t.destination||'').toLowerCase();
-      var ltrs=base;if(dest.includes('lusaka'))ltrs=base-reducL;else if(dest.includes('ndola'))ltrs=base-reducN;
+      var ltrs=base + _routeFuelAdjust(t.destination);
       var amt=ltrs*fuelPrice;
       totalLtrs+=ltrs;totalFuelAmt+=amt;
       var drv=DRIVERS.find(function(d){return d.name===t.driver;});

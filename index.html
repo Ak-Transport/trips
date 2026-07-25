@@ -393,6 +393,8 @@ td,td *{font-size:13px!important;font-family:'Inter',sans-serif!important}
           <option value="IN TRANSIT">In Transit</option>
           <option value="COMPLETED">Completed</option>
         </select>
+        <input type="text" id="budget-search-vehicle" placeholder="&#128269; Search vehicle number..." oninput="renderBudget()" style="flex:1;min-width:150px;max-width:220px;border:1.5px solid var(--br);border-radius:8px;padding:8px 12px;font-size:13px;outline:none">
+        <input type="text" id="budget-search-driver" placeholder="&#128269; Search driver..." oninput="renderBudget()" style="flex:1;min-width:150px;max-width:220px;border:1.5px solid var(--br);border-radius:8px;padding:8px 12px;font-size:13px;outline:none">
         <span id="budget-selected-count" style="font-size:12px;color:var(--t2);margin-left:auto;white-space:nowrap"></span>
       </div>
       <!-- Legend -->
@@ -2695,10 +2697,12 @@ function _printFormWindow(opts) {
     +'td{padding:6px;border:1px solid #000;font-size:10px;vertical-align:middle;color:#000}'
     +'tbody tr:nth-child(even) td{background:#f9f9f9}'
     +'tfoot td{padding:7px 6px;border:1.5px solid #000;font-weight:700;background:#efefef;color:#000}'
+    +'tfoot{display:table-row-group}'
     +'.tbl-main thead th{background:#fff;color:#000;padding:7px 6px;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;border:1.5px solid #000}'
     +'.tbl-main tbody td{padding:6px;border:1px solid #000;font-size:10px;vertical-align:middle;color:#000}'
     +'.tbl-main tbody tr:nth-child(even) td{background:#f9f9f9}'
     +'.tbl-main tfoot td{padding:7px 6px;border:1.5px solid #000;font-weight:700;background:#efefef;color:#000}'
+    +'.tbl-main tfoot{display:table-row-group}'
     +'.sig-box{border:1px solid #000;border-radius:4px;padding:14px 18px}'
     +'</style></head><body>'
     +'<table style="margin-bottom:14px"><tr>'
@@ -3827,10 +3831,15 @@ function editTrip(id) {
   _editingTripId = id;
   _editingTripPrevView = currentView || 'alltrips';
 
-  // Populate horse/trailer/driver searchable fields
-  _atFieldOptions['et-horse']   = VEHICLES.filter(function(v){ return !(v.vehicleType||'').toLowerCase().includes('trailer'); }).map(function(v){ return v.plate||v.code||''; }).filter(Boolean);
-  _atFieldOptions['et-trailer'] = VEHICLES.filter(function(v){ return (v.vehicleType||'').toLowerCase().includes('trailer'); }).map(function(v){ return v.plate||v.code||''; }).filter(Boolean);
-  _atFieldOptions['et-driver']  = DRIVERS.map(function(d){ return d.name||''; }).filter(Boolean);
+  // Populate horse/trailer/driver searchable fields — excluding
+  // anything already tied up on ANOTHER active (not yet offloaded, not
+  // cancelled) trip. This trip's own current horse/trailer/driver are
+  // excluded from the busy check (via excludeTripId=id below), so they
+  // still appear here and the trip can be re-saved unchanged.
+  var busyEdit = _getBusyResources(id);
+  _atFieldOptions['et-horse']   = VEHICLES.filter(function(v){ return !(v.vehicleType||'').toLowerCase().includes('trailer') && !busyEdit.horses[(v.plate||v.code||'').toUpperCase()]; }).map(function(v){ return v.plate||v.code||''; }).filter(Boolean);
+  _atFieldOptions['et-trailer'] = VEHICLES.filter(function(v){ return (v.vehicleType||'').toLowerCase().includes('trailer') && !busyEdit.trailers[(v.plate||v.code||'').toUpperCase()]; }).map(function(v){ return v.plate||v.code||''; }).filter(Boolean);
+  _atFieldOptions['et-driver']  = DRIVERS.filter(function(d){ return !busyEdit.drivers[(d.name||'').toUpperCase()]; }).map(function(d){ return d.name||''; }).filter(Boolean);
 
   document.getElementById('et-horse').value   = t.horse || '';
   document.getElementById('et-trailer').value = t.trailer || '';
@@ -3951,6 +3960,10 @@ async function saveEditTrip() {
   var loaded    = parseFloat(document.getElementById('et-loaded').value)||0;
   var offloaded = parseFloat(document.getElementById('et-offloaded').value)||0;
   if (!horse || !trailer || !driver) { toast('Fill required fields (Horse, Trailer, Driver)','er'); return; }
+  var busySave = _getBusyResources(_editingTripId);
+  if (busySave.horses[horse.toUpperCase()])   { toast('Truck '+horse+' is already assigned to trip '+busySave.horses[horse.toUpperCase()]+' (not yet offloaded)','er'); return; }
+  if (busySave.trailers[trailer.toUpperCase()]) { toast('Trailer '+trailer+' is already assigned to trip '+busySave.trailers[trailer.toUpperCase()]+' (not yet offloaded)','er'); return; }
+  if (busySave.drivers[driver.toUpperCase()])  { toast('Driver '+driver+' is already assigned to trip '+busySave.drivers[driver.toUpperCase()]+' (not yet offloaded)','er'); return; }
   if (loadDate && !(loaded > 0)) { toast('Vol Loaded is required when Loading Date is filled','er'); return; }
   if (loaded > 0 && !loadDate) { toast('Loading Date is required when Vol Loaded is filled','er'); return; }
   if ((offDate || offloaded > 0) && !(loadDate && loaded > 0)) { toast('Complete Loading Date and Vol Loaded before entering Offloading details','er'); return; }
@@ -4424,6 +4437,54 @@ function _routeFuelAdjust(destination) {
 // breaks for a route that's simply never been configured with the new
 // field. This is the single source of truth — every place that used
 // to calculate dist*mileageRate on its own now calls this instead.
+// Looks up a vehicle's ACTUAL recorded permit (not a rate estimate) for
+// a given permit type, and returns how it should display in the
+// Trip/Vehicle Permits print & export forms:
+// - Expired, or 0-30 days left  -> real amount + a small note, counts
+//   toward the section total (needs money spent on it soon/now)
+// - More than 30 days left       -> "ACTIVE", no amount, excluded from
+//   the total (nothing to act on yet)
+// - Never recorded at all        -> "Not Rec.", no amount, excluded
+function _permitCellInfo(vehiclePlate, permitTypeName) {
+  if (!vehiclePlate) return {html:'<span style="color:#9ca3af">n/a</span>', amount:0, status:'na'};
+  var records = PERMITS.filter(function(p){
+    return (p.vehicle||'').toUpperCase() === vehiclePlate.toUpperCase() && p.permitType === permitTypeName;
+  });
+  var latest = records.sort(function(a,b){ return new Date(b.paymentDate||0)-new Date(a.paymentDate||0); })[0];
+  if (!latest) return {html:'<span style="color:#b91c1c;font-weight:700;font-size:10px">Not Rec.</span>', amount:0, status:'notrec'};
+  var exp = new Date(latest.expiryDate||''); exp.setHours(0,0,0,0);
+  var today_dt = new Date(); today_dt.setHours(0,0,0,0);
+  var daysLeft = Math.ceil((exp-today_dt)/86400000);
+  var amt = parseFloat(latest.amountPaid||0);
+  if (isNaN(daysLeft)) return {html:'<span style="color:#b91c1c;font-weight:700;font-size:10px">Not Rec.</span>', amount:0, status:'notrec'};
+  if (daysLeft < 0) {
+    return {html: fmt(amt) + '<div style="font-size:9px;color:#b91c1c">expired</div>', amount: amt, status:'expired'};
+  } else if (daysLeft <= 30) {
+    return {html: fmt(amt) + '<div style="font-size:9px;color:#92400e">'+daysLeft+'d left</div>', amount: amt, status:'duesoon'};
+  } else {
+    return {html: '<span style="color:#166534;font-weight:700">ACTIVE</span>', amount: 0, status:'active'};
+  }
+}
+
+// Computes which Drivers, Horses, and Trailers are currently tied up
+// on an active trip - one that hasn't been offloaded yet and hasn't
+// been cancelled. A resource is "free" again the moment its trip is
+// Completed or Cancelled. Pass excludeTripId when checking for a trip
+// that's currently being edited, so that trip's own current
+// driver/horse/trailer don't count as "busy" against themselves.
+function _getBusyResources(excludeTripId) {
+  var busyDrivers = {}, busyHorses = {}, busyTrailers = {};
+  TRIPS.forEach(function(t){
+    if (t.id === excludeTripId) return;
+    var status = (t.status||'').toUpperCase();
+    if (status === 'COMPLETED' || status === 'CANCELLED') return;
+    if (t.driver)  busyDrivers[t.driver.toUpperCase()]   = t.tripNo;
+    if (t.horse)   busyHorses[t.horse.toUpperCase()]     = t.tripNo;
+    if (t.trailer) busyTrailers[t.trailer.toUpperCase()] = t.tripNo;
+  });
+  return {drivers: busyDrivers, horses: busyHorses, trailers: busyTrailers};
+}
+
 function _routeMileageAmount(destination) {
   if (!destination) return 0;
   var route = ROUTES.find(function(r){ return (r.destination||'').toLowerCase() === destination.toLowerCase(); });
@@ -8115,10 +8176,15 @@ function editTrip(id) {
   _editingTripId = id;
   _editingTripPrevView = currentView || 'alltrips';
 
-  // Populate horse/trailer/driver searchable fields
-  _atFieldOptions['et-horse']   = VEHICLES.filter(function(v){ return !(v.vehicleType||'').toLowerCase().includes('trailer'); }).map(function(v){ return v.plate||v.code||''; }).filter(Boolean);
-  _atFieldOptions['et-trailer'] = VEHICLES.filter(function(v){ return (v.vehicleType||'').toLowerCase().includes('trailer'); }).map(function(v){ return v.plate||v.code||''; }).filter(Boolean);
-  _atFieldOptions['et-driver']  = DRIVERS.map(function(d){ return d.name||''; }).filter(Boolean);
+  // Populate horse/trailer/driver searchable fields — excluding
+  // anything already tied up on ANOTHER active (not yet offloaded, not
+  // cancelled) trip. This trip's own current horse/trailer/driver are
+  // excluded from the busy check (via excludeTripId=id below), so they
+  // still appear here and the trip can be re-saved unchanged.
+  var busyEdit = _getBusyResources(id);
+  _atFieldOptions['et-horse']   = VEHICLES.filter(function(v){ return !(v.vehicleType||'').toLowerCase().includes('trailer') && !busyEdit.horses[(v.plate||v.code||'').toUpperCase()]; }).map(function(v){ return v.plate||v.code||''; }).filter(Boolean);
+  _atFieldOptions['et-trailer'] = VEHICLES.filter(function(v){ return (v.vehicleType||'').toLowerCase().includes('trailer') && !busyEdit.trailers[(v.plate||v.code||'').toUpperCase()]; }).map(function(v){ return v.plate||v.code||''; }).filter(Boolean);
+  _atFieldOptions['et-driver']  = DRIVERS.filter(function(d){ return !busyEdit.drivers[(d.name||'').toUpperCase()]; }).map(function(d){ return d.name||''; }).filter(Boolean);
 
   document.getElementById('et-horse').value   = t.horse || '';
   document.getElementById('et-trailer').value = t.trailer || '';
@@ -8223,6 +8289,10 @@ async function saveEditTrip() {
   var loaded    = parseFloat(document.getElementById('et-loaded').value)||0;
   var offloaded = parseFloat(document.getElementById('et-offloaded').value)||0;
   if (!horse || !trailer || !driver) { toast('Fill required fields (Horse, Trailer, Driver)','er'); return; }
+  var busySave = _getBusyResources(_editingTripId);
+  if (busySave.horses[horse.toUpperCase()])   { toast('Truck '+horse+' is already assigned to trip '+busySave.horses[horse.toUpperCase()]+' (not yet offloaded)','er'); return; }
+  if (busySave.trailers[trailer.toUpperCase()]) { toast('Trailer '+trailer+' is already assigned to trip '+busySave.trailers[trailer.toUpperCase()]+' (not yet offloaded)','er'); return; }
+  if (busySave.drivers[driver.toUpperCase()])  { toast('Driver '+driver+' is already assigned to trip '+busySave.drivers[driver.toUpperCase()]+' (not yet offloaded)','er'); return; }
   if (loadDate && !(loaded > 0)) { toast('Vol Loaded is required when Loading Date is filled','er'); return; }
   if (loaded > 0 && !loadDate) { toast('Loading Date is required when Vol Loaded is filled','er'); return; }
   if ((offDate || offloaded > 0) && !(loadDate && loaded > 0)) { toast('Complete Loading Date and Vol Loaded before entering Offloading details','er'); return; }
@@ -15838,6 +15908,8 @@ function renderBudget() {
 
   var rfilt     = (document.getElementById('budget-filter-release')||{}).value||'';
   var sfilt     = (document.getElementById('budget-filter-status')||{}).value||'';
+  var vfilt     = ((document.getElementById('budget-search-vehicle')||{}).value||'').trim().toLowerCase();
+  var dfilt     = ((document.getElementById('budget-search-driver')||{}).value||'').trim().toLowerCase();
   var today_dt  = new Date(); today_dt.setHours(0,0,0,0);
   var alertDays = parseInt(SETTINGS.expiryAlertDays)||30;
   var warn_dt   = new Date(today_dt); warn_dt.setDate(warn_dt.getDate()+alertDays);
@@ -15858,6 +15930,8 @@ function renderBudget() {
     var trips = TRIPS.filter(function(t){
       if(t.releaseId!==rel.id) return false;
       if(sfilt && (t.status||'').toUpperCase()!==sfilt.toUpperCase()) return false;
+      if(vfilt && !((t.horse||'').toLowerCase().includes(vfilt) || (t.trailer||'').toLowerCase().includes(vfilt))) return false;
+      if(dfilt && !(t.driver||'').toLowerCase().includes(dfilt)) return false;
       return true;
     });
     trips.forEach(function(t){ allRows.push({rel:rel, t:t}); });
@@ -15881,7 +15955,7 @@ function renderBudget() {
     + '<thead>'
     // Group header row — Trip/Truck now 2 cols so Release & Trip = 8
     + '<tr style="background:#0a2d6e">'
-    + '<th style="'+thLeft+'" colspan="8">RELEASE &amp; TRIP</th>'
+    + '<th style="'+thLeft+'" colspan="9">RELEASE &amp; TRIP</th>'
     + '<th style="'+thBase+';background:#1a6b3c" colspan="4">OPERATIONAL</th>'
     + '<th style="'+thBase+';background:#7c3aed" colspan="1">DRIVER</th>'
     + '<th style="'+thBase+';background:#166534" colspan="6">TRIP PERMITS</th>'
@@ -15896,6 +15970,7 @@ function renderBudget() {
     + '<th style="'+thLeft+'">Destination</th>'
     + '<th style="'+thLeft+'">Trip No</th>'
     + '<th style="'+thLeft+'">Truck</th>'
+    + '<th style="'+thLeft+'">Trailer</th>'
     + '<th style="'+thBase+'">Driver</th>'
     + '<th style="'+thBase+';background:#1a6b3c">Mile</th>'
     + '<th style="'+thBase+';background:#1a6b3c">Toll (Tunduma)</th>'
@@ -15904,8 +15979,8 @@ function renderBudget() {
     + '<th style="'+thBase+';background:#7c3aed">Shortage</th>'
     + '<th style="'+thBase+';background:#166534">COM-H</th>'
     + '<th style="'+thBase+';background:#166534">COM-T</th>'
-    + '<th style="'+thBase+';background:#166534">TRN-H</th>'
-    + '<th style="'+thBase+';background:#166534">TRN-T</th>'
+    + '<th style="'+thBase+';background:#166534">PRM-H</th>'
+    + '<th style="'+thBase+';background:#166534">PRM-T</th>'
     + '<th style="'+thBase+';background:#166534">Carbon</th>'
     + '<th style="'+thBase+';background:#166534">ZABS</th>'
     + '<th style="'+thBase+';background:#92400e">INS-H</th>'
@@ -16080,6 +16155,7 @@ function renderBudget() {
       + '<td style="padding:10px 10px;font-size:11px;color:var(--t2);'+sepStyle+'">'+esc(rel.destination)+'</td>'
       + '<td style="padding:10px 12px;font-size:11px;font-weight:700;color:var(--ac);white-space:nowrap;'+sepStyle+'">'+esc(t.tripNo)+'</td>'
       + '<td style="padding:10px 10px;font-size:11px;font-weight:600;color:var(--t2);white-space:nowrap;'+sepStyle+'">'+esc(horse||'—')+'</td>'
+      + '<td style="padding:10px 10px;font-size:11px;font-weight:600;color:var(--t2);white-space:nowrap;'+sepStyle+'">'+esc(trailer||'—')+'</td>'
       + '<td style="padding:10px 10px;font-size:11px;color:var(--t2);max-width:150px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+esc(t.driver||'—')+'</td>'
       + cell(reqStatus('MILEAGE'))
       + cell(tollStatus('tunduma'))
@@ -16088,8 +16164,8 @@ function renderBudget() {
       + cell(driverShortageStatus(t.driver))
       + cell(tripPermitStatus('COMESA','Horse'))
       + cell(tripPermitStatus('COMESA','Trailer'))
-      + cell(tripPermitStatus('Transit','Horse'))
-      + cell(tripPermitStatus('Transit','Trailer'))
+      + cell(tripPermitStatus('Permit','Horse'))
+      + cell(tripPermitStatus('Permit','Trailer'))
       + cell(tripPermitStatus('Carbon','Horse'))
       + cell(tripPermitStatus('ZABS','Trailer'))
       + cell(vehiclePermitStatus(horse,'Insurance'))
@@ -16412,12 +16488,12 @@ function openPrintForms(tripIds) {
   modal.id = 'modal-print-forms';
   modal.className = 'overlay';
   modal.innerHTML = '<div class="modal" style="max-width:480px">'
-    +'<div class="modalhead"><div class="modaltitle">&#128424; Print Forms</div><button class="modalclose" onclick="closeModal(\'modal-print-forms\')">&#10005;</button></div>'
+    +'<div class="modalhead"><div class="modaltitle">&#128424; Print / Export Forms</div><button class="modalclose" onclick="closeModal(\'modal-print-forms\')">&#10005;</button></div>'
     +'<div class="modalbody">'
-    +'<div style="font-size:12px;color:var(--t2);margin-bottom:16px">Select which forms to print for the '+selectedTrips.length+' selected trip'+(selectedTrips.length!==1?'s':'')+'</div>'
+    +'<div style="font-size:12px;color:var(--t2);margin-bottom:16px">Select which forms to print/export for the '+selectedTrips.length+' selected trip'+(selectedTrips.length!==1?'s':'')+'</div>'
     +'<div style="display:flex;flex-direction:column;gap:10px">'
     +['mileage-form','toll-form','fuel-form','trip-permits-form','vehicle-permits-form'].map(function(id,i){
-      var labels=['🛣️ Mileage Request Form','💵 Road Toll Form (Tunduma)','⛽ Fuel Request Form','🛡️ Trip Permits Form (COMESA, Transit, Carbon, ZABS)','🔧 Vehicle Permits Form (Insurance, LATRA, C28, Calibration)'];
+      var labels=['🛣️ Mileage Request Form','💵 Road Toll Form (Tunduma)','⛽ Fuel Request Form','🛡️ Trip Permits Form (COMESA, Permit, Carbon, ZABS)','🔧 Vehicle Permits Form (Insurance, LATRA, C28, Calibration)'];
       return '<label style="display:flex;align-items:center;gap:10px;padding:10px 14px;background:#f8f9fc;border:1.5px solid #e2e2e7;border-radius:10px;cursor:pointer">'
         +'<input type="checkbox" id="pf-'+id+'" checked style="width:16px;height:16px">'
         +'<span style="font-size:13px;font-weight:500">'+labels[i]+'</span></label>';
@@ -16425,6 +16501,7 @@ function openPrintForms(tripIds) {
     +'</div></div>'
     +'<div class="modalfoot">'
     +'<button class="btn bg" onclick="closeModal(\'modal-print-forms\')">Cancel</button>'
+    +'<button class="btn bp" style="background:#166534" onclick="executeExportExcelForms()">&#128202; Export Excel</button>'
     +'<button class="btn bp" onclick="executePrintForms()">&#128424; Print Selected</button>'
     +'</div></div>';
   document.body.appendChild(modal);
@@ -16473,12 +16550,12 @@ function executePrintForms() {
     var totalAmt=rows.reduce(function(s,r){return s+r.amt;},0);
     var totalBonus=rows.reduce(function(s,r){return s+r.bonus;},0);
     allHtml+='<div class="pf-page">'+hdr('MILEAGE REQUEST FORM')
-      +tableWrap('<thead><tr><th>Release</th><th>Trip No</th><th>Truck</th><th>Driver</th><th>Destination</th><th>KM</th><th>Amount (TZS)</th><th>Bonus (TZS)</th></tr></thead>'
-      +'<tbody>'+rows.map(function(r){
-        return '<tr><td>'+esc(r.t.releaseNo||'—')+'</td><td><b>'+esc(r.t.tripNo)+'</b></td><td>'+esc(r.t.horse)+'</td><td>'+esc(r.t.driver||'—')+'</td><td>'+esc(r.t.destination)+'</td><td>'+fmt(r.dist)+'</td><td>'+fmt(r.amt)+'</td><td>'+(r.bonus>0?fmt(r.bonus):'—')+'</td></tr>';
+      +tableWrap('<thead><tr><th>S/No</th><th>Release</th><th>Trip No</th><th>Truck</th><th>Driver</th><th>Destination</th><th>KM</th><th>Amount (TZS)</th><th>Bonus (TZS)</th></tr></thead>'
+      +'<tbody>'+rows.map(function(r,ri){
+        return '<tr><td>'+(ri+1)+'</td><td>'+esc(r.t.releaseNo||'—')+'</td><td><b>'+esc(r.t.tripNo)+'</b></td><td>'+esc(r.t.horse)+'</td><td>'+esc(r.t.driver||'—')+'</td><td>'+esc(r.t.destination)+'</td><td>'+fmt(r.dist)+'</td><td>'+fmt(r.amt)+'</td><td>'+(r.bonus>0?fmt(r.bonus):'—')+'</td></tr>';
       }).join('')+'</tbody>'
-      +'<tfoot><tr><td colspan="6" style="text-align:right">TOTAL</td><td>TZS '+fmt(totalAmt)+'</td><td>TZS '+fmt(totalBonus)+'</td></tr>'
-      +'<tr><td colspan="6" style="text-align:right">GRAND TOTAL (incl. Bonus)</td><td colspan="2">TZS '+fmt(totalAmt+totalBonus)+'</td></tr></tfoot>')
+      +'<tfoot><tr><td colspan="7" style="text-align:right">TOTAL</td><td>TZS '+fmt(totalAmt)+'</td><td>TZS '+fmt(totalBonus)+'</td></tr>'
+      +'<tr><td colspan="7" style="text-align:right">GRAND TOTAL (incl. Bonus)</td><td colspan="2">TZS '+fmt(totalAmt+totalBonus)+'</td></tr></tfoot>')
     +sigBlock(reqby)+'</div>';
   }
 
@@ -16490,13 +16567,13 @@ function executePrintForms() {
     var totalToll=tollRows.length*tollRate;
     allHtml+='<div class="pf-page">'+hdr('ROAD TOLL REQUEST FORM — TUNDUMA')
       +'<p style="font-size:11px;color:#444;margin-bottom:12px">Border: Tunduma &nbsp;&nbsp; Rate: USD '+fmtDec(tollRate)+' per truck</p>'
-      +tableWrap('<thead><tr><th>Release</th><th>Trip No</th><th>Truck</th><th>Driver</th><th>Destination</th><th>Amount (USD)</th></tr></thead>'
-      +'<tbody>'+tollRows.map(function(t){
+      +tableWrap('<thead><tr><th>S/No</th><th>Release</th><th>Trip No</th><th>Truck</th><th>Driver</th><th>Destination</th><th>Amount (USD)</th></tr></thead>'
+      +'<tbody>'+tollRows.map(function(t,ti){
         var r=FUEL_REQUESTS.filter(function(x){return x.tripId===t.id&&x.requestType==='ROAD_TOLL';})[0];
         if(r&&r.requestedBy) reqby2=r.requestedBy;
-        return '<tr><td>'+esc(t.releaseNo||'—')+'</td><td><b>'+esc(t.tripNo)+'</b></td><td>'+esc(t.horse)+'</td><td>'+esc(t.driver||'—')+'</td><td>'+esc(t.destination)+'</td><td>'+fmtDec(tollRate)+'</td></tr>';
+        return '<tr><td>'+(ti+1)+'</td><td>'+esc(t.releaseNo||'—')+'</td><td><b>'+esc(t.tripNo)+'</b></td><td>'+esc(t.horse)+'</td><td>'+esc(t.driver||'—')+'</td><td>'+esc(t.destination)+'</td><td>'+fmtDec(tollRate)+'</td></tr>';
       }).join('')+'</tbody>'
-      +'<tfoot><tr><td colspan="5" style="text-align:right">TOTAL</td><td>USD '+fmtDec(totalToll)+'</td></tr></tfoot>')
+      +'<tfoot><tr><td colspan="6" style="text-align:right">TOTAL</td><td>USD '+fmtDec(totalToll)+'</td></tr></tfoot>')
     +sigBlock(reqby2)+'</div>';
   }
 
@@ -16520,77 +16597,90 @@ function executePrintForms() {
     });
     allHtml+='<div class="pf-page">'+hdr('FUEL REQUEST FORM')
       +'<p style="font-size:11px;color:#444;margin-bottom:12px">Fuel Price: TZS '+fmt(fuelPrice)+'/ltr</p>'
-      +tableWrap('<thead><tr><th>Release</th><th>Trip No</th><th>Truck</th><th>Driver</th><th>License No</th><th>Destination</th><th>Litres</th><th>Amount (TZS)</th></tr></thead>'
-      +'<tbody>'+fuelRows.map(function(r){
-        return '<tr><td>'+esc(r.t.releaseNo||'—')+'</td><td><b>'+esc(r.t.tripNo)+'</b></td><td>'+esc(r.t.horse)+'</td><td>'+esc(r.t.driver||'—')+'</td><td>'+esc(r.lic)+'</td><td>'+esc(r.t.destination)+'</td><td>'+fmt(r.ltrs)+'</td><td>'+fmt(r.amt)+'</td></tr>';
+      +tableWrap('<thead><tr><th>S/No</th><th>Release</th><th>Trip No</th><th>Truck</th><th>Driver</th><th>License No</th><th>Destination</th><th>Litres</th><th>Amount (TZS)</th></tr></thead>'
+      +'<tbody>'+fuelRows.map(function(r,ri){
+        return '<tr><td>'+(ri+1)+'</td><td>'+esc(r.t.releaseNo||'—')+'</td><td><b>'+esc(r.t.tripNo)+'</b></td><td>'+esc(r.t.horse)+'</td><td>'+esc(r.t.driver||'—')+'</td><td>'+esc(r.lic)+'</td><td>'+esc(r.t.destination)+'</td><td>'+fmt(r.ltrs)+'</td><td>'+fmt(r.amt)+'</td></tr>';
       }).join('')+'</tbody>'
-      +'<tfoot><tr><td colspan="6" style="text-align:right">TOTAL</td><td>'+fmt(totalLtrs)+' ltrs</td><td>TZS '+fmt(totalFuelAmt)+'</td></tr></tfoot>')
+      +'<tfoot><tr><td colspan="7" style="text-align:right">TOTAL</td><td>'+fmt(totalLtrs)+' ltrs</td><td>TZS '+fmt(totalFuelAmt)+'</td></tr></tfoot>')
     +sigBlock(reqby3)+'</div>';
   }
 
-  // ── TRIP PERMITS FORM ──
+  // ── TRIP PERMITS FORM ── shows REAL recorded permits (not rate
+  // estimates): expired or 0-30 days left shows the actual amount and
+  // counts toward the total; more than 30 days left shows ACTIVE and
+  // is excluded from the total.
   if(document.getElementById('pf-trip-permits-form').checked){
     var permitTypes=[
-      {key:'COMESA — Horse',   type:'COMESA',applies:'Horse'},
-      {key:'COMESA — Trailer', type:'COMESA',applies:'Trailer'},
-      {key:'Transit Permit — Horse', type:'Transit Permit',applies:'Horse'},
-      {key:'Transit Permit — Trailer',type:'Transit Permit',applies:'Trailer'},
-      {key:'Carbon Tax — Horse',type:'Carbon Tax',applies:'Horse'},
-      {key:'ZABS — Trailer',  type:'ZABS',applies:'Trailer'},
+      {key:'COMESA-H', type:'COMESA Horse',   vehicleKey:'horse'},
+      {key:'COMESA-T', type:'COMESA Trailer', vehicleKey:'trailer'},
+      {key:'PRM-H',    type:'Permit Horse',   vehicleKey:'horse'},
+      {key:'PRM-T',    type:'Permit Trailer', vehicleKey:'trailer'},
+      {key:'Carbon',   type:'Carbon Tax',     vehicleKey:'horse'},
+      {key:'ZABS',     type:'ZABS',           vehicleKey:'trailer'},
     ];
     var totals={};permitTypes.forEach(function(p){totals[p.key]=0;});
     var grandTotal=0;var reqby4='';
-    var pRows=selectedTrips.map(function(t){
+    var pFilteredTrips = selectedTrips.filter(function(t){
+      return permitTypes.some(function(p){
+        var vehiclePlate = p.vehicleKey==='horse' ? t.horse : t.trailer;
+        return _permitCellInfo(vehiclePlate, p.type).status !== 'active';
+      });
+    });
+    var pRows=pFilteredTrips.map(function(t,ti){
       var cells=permitTypes.map(function(p){
-        var pr=PERMIT_RATES.find(function(r){return r.permitType===p.type&&r.appliesTo===p.applies;});
-        var rate=pr?parseFloat(pr.rate||0):0;
-        totals[p.key]+=rate; grandTotal+=rate;
-        var r=FUEL_REQUESTS.filter(function(x){return x.tripId===t.id&&x.requestType==='PERMIT'&&(x.permitType||'').includes(p.type);}).pop();
-        if(r&&r.requestedBy) reqby4=r.requestedBy;
-        return '<td>'+fmt(rate)+'</td>';
+        var vehiclePlate = p.vehicleKey==='horse' ? t.horse : t.trailer;
+        var info = _permitCellInfo(vehiclePlate, p.type);
+        totals[p.key]+=info.amount; grandTotal+=info.amount;
+        return '<td>'+info.html+'</td>';
       }).join('');
-      return '<tr><td>'+esc(t.releaseNo||'—')+'</td><td><b>'+esc(t.tripNo)+'</b></td><td>'+esc(t.horse)+'</td><td>'+esc(t.driver||'—')+'</td>'+cells+'</tr>';
+      return '<tr><td>'+(ti+1)+'</td><td>'+esc(t.releaseNo||'—')+'</td><td><b>'+esc(t.tripNo)+'</b></td><td>'+esc(t.horse||'—')+'</td><td>'+esc(t.trailer||'—')+'</td><td>'+esc(t.driver||'—')+'</td>'+cells+'</tr>';
     }).join('');
     allHtml+='<div class="pf-page">'+hdr('TRIP PERMITS REQUEST FORM')
-      +tableWrap('<thead><tr><th>Release</th><th>Trip No</th><th>Truck</th><th>Driver</th><th>COMESA-H</th><th>COMESA-T</th><th>Trans-H</th><th>Trans-T</th><th>Carbon</th><th>ZABS</th></tr></thead>'
+      +(pFilteredTrips.length<selectedTrips.length ? '<p style="font-size:10px;color:#666;margin-bottom:8px">'+(selectedTrips.length-pFilteredTrips.length)+' truck/trailer combination'+(selectedTrips.length-pFilteredTrips.length!==1?'s':'')+' omitted — all permits valid with more than 30 days remaining.</p>' : '')
+      +tableWrap('<thead><tr><th>S/No</th><th>Release</th><th>Trip No</th><th>Truck</th><th>Trailer</th><th>Driver</th><th>COMESA-H</th><th>COMESA-T</th><th>PRM-H</th><th>PRM-T</th><th>Carbon</th><th>ZABS</th></tr></thead>'
       +'<tbody>'+pRows+'</tbody>'
-      +'<tfoot><tr><td colspan="4" style="text-align:right">TOTAL</td>'
+      +'<tfoot><tr><td colspan="6" style="text-align:right">TOTAL</td>'
       +permitTypes.map(function(p){return '<td>'+fmt(totals[p.key])+'</td>';}).join('')+'</tr>'
-      +'<tr><td colspan="4" style="text-align:right">GRAND TOTAL</td><td colspan="6">TZS '+fmt(grandTotal)+'</td></tr></tfoot>')
+      +'<tr><td colspan="6" style="text-align:right">GRAND TOTAL</td><td colspan="6">TZS '+fmt(grandTotal)+'</td></tr></tfoot>')
     +sigBlock(reqby4)+'</div>';
   }
 
-  // ── VEHICLE PERMITS FORM ──
+  // ── VEHICLE PERMITS FORM ── same real-permit status logic as Trip
+  // Permits above, in the same one-row-per-trip layout.
   if(document.getElementById('pf-vehicle-permits-form').checked){
-    var vPermitTypes=['Insurance','LATRA','C28','Calibration'];
-    var vTotals={Insurance:0,LATRA:0,C28:0,Calibration:0};
+    var vPermitTypes=[
+      {key:'INS-H', type:'Insurance',   vehicleKey:'horse'},
+      {key:'INS-T', type:'Insurance',   vehicleKey:'trailer'},
+      {key:'LAT-H', type:'LATRA',       vehicleKey:'horse'},
+      {key:'LAT-T', type:'LATRA',       vehicleKey:'trailer'},
+      {key:'C28',   type:'C28',         vehicleKey:'trailer'},
+      {key:'Calib', type:'Calibration', vehicleKey:'trailer'},
+    ];
+    var vTotals={};vPermitTypes.forEach(function(p){vTotals[p.key]=0;});
     var vGrand=0; var reqby5='';
-    var vRows=[];
-    selectedTrips.forEach(function(t){
-      vRows.push({vehicle:t.horse,type:'Horse',tripNo:t.tripNo,releaseNo:t.releaseNo,types:['Insurance','LATRA']});
-      vRows.push({vehicle:t.trailer,type:'Trailer',tripNo:t.tripNo,releaseNo:t.releaseNo,types:['Insurance','LATRA','C28','Calibration']});
+    var vFilteredTrips = selectedTrips.filter(function(t){
+      return vPermitTypes.some(function(p){
+        var vehiclePlate = p.vehicleKey==='horse' ? t.horse : t.trailer;
+        return _permitCellInfo(vehiclePlate, p.type).status !== 'active';
+      });
     });
-    var seen={};
-    vRows=vRows.filter(function(r){var k=r.vehicle+'|'+r.type;if(seen[k])return false;seen[k]=true;return true;});
-
-    var vRowsHtml=vRows.map(function(r){
-      var cells=vPermitTypes.map(function(pt){
-        var applies=r.types.indexOf(pt)>=0;
-        if(!applies) return '<td style="color:#bbb">—</td>';
-        var existing=PERMITS.filter(function(p){return(p.vehicle||'').toUpperCase()===(r.vehicle||'').toUpperCase()&&p.permitType===pt;}).sort(function(a,b){return new Date(b.paymentDate||0)-new Date(a.paymentDate||0);})[0];
-        var amt=existing?parseFloat(existing.amountPaid||0):0;
-        vTotals[pt]+=amt; vGrand+=amt;
-        return '<td>'+fmt(amt)+'</td>';
+    var vRowsHtml=vFilteredTrips.map(function(t,ti){
+      var cells=vPermitTypes.map(function(p){
+        var vehiclePlate = p.vehicleKey==='horse' ? t.horse : t.trailer;
+        var info=_permitCellInfo(vehiclePlate, p.type);
+        vTotals[p.key]+=info.amount; vGrand+=info.amount;
+        return '<td>'+info.html+'</td>';
       }).join('');
-      return '<tr><td>'+esc(r.releaseNo||'—')+'</td><td><b>'+esc(r.vehicle||'—')+'</b></td><td>'+esc(r.type)+'</td>'+cells+'</tr>';
+      return '<tr><td>'+(ti+1)+'</td><td>'+esc(t.releaseNo||'—')+'</td><td><b>'+esc(t.tripNo)+'</b></td><td>'+esc(t.horse||'—')+'</td><td>'+esc(t.trailer||'—')+'</td>'+cells+'</tr>';
     }).join('');
 
     allHtml+='<div class="pf-page">'+hdr('VEHICLE PERMITS REQUEST FORM')
-      +tableWrap('<thead><tr><th>Release</th><th>Vehicle</th><th>Type</th><th>Insurance</th><th>LATRA</th><th>C28</th><th>Calibration</th></tr></thead>'
+      +(vFilteredTrips.length<selectedTrips.length ? '<p style="font-size:10px;color:#666;margin-bottom:8px">'+(selectedTrips.length-vFilteredTrips.length)+' truck/trailer combination'+(selectedTrips.length-vFilteredTrips.length!==1?'s':'')+' omitted — all permits valid with more than 30 days remaining.</p>' : '')
+      +tableWrap('<thead><tr><th>S/No</th><th>Release</th><th>Trip No</th><th>Truck</th><th>Trailer</th><th>INS-H</th><th>INS-T</th><th>LAT-H</th><th>LAT-T</th><th>C28</th><th>Calib</th></tr></thead>'
       +'<tbody>'+vRowsHtml+'</tbody>'
-      +'<tfoot><tr><td colspan="3" style="text-align:right">TOTAL</td>'
-      +vPermitTypes.map(function(pt){return '<td>'+fmt(vTotals[pt])+'</td>';}).join('')+'</tr>'
-      +'<tr><td colspan="3" style="text-align:right">GRAND TOTAL</td><td colspan="4">TZS '+fmt(vGrand)+'</td></tr></tfoot>')
+      +'<tfoot><tr><td colspan="5" style="text-align:right">TOTAL</td>'
+      +vPermitTypes.map(function(p){return '<td>'+fmt(vTotals[p.key])+'</td>';}).join('')+'</tr>'
+      +'<tr><td colspan="5" style="text-align:right">GRAND TOTAL</td><td colspan="6">TZS '+fmt(vGrand)+'</td></tr></tfoot>')
     +sigBlock(reqby5)+'</div>';
   }
 
@@ -16608,12 +16698,155 @@ function executePrintForms() {
     +'.tbl-main tbody td{padding:6px;border:1px solid #000;font-size:10px;vertical-align:middle;color:#000}'
     +'.tbl-main tbody tr:nth-child(even) td{background:#f9f9f9}'
     +'.tbl-main tfoot td{padding:7px 6px;border:1.5px solid #000;font-weight:700;background:#efefef;color:#000}'
+    +'.tbl-main tfoot{display:table-row-group}'
     +'.sig-box{border:1px solid #000;border-radius:4px;padding:14px 18px}'
     +'</style>';
   closeModal('modal-print-forms');
   var win = window.open('','_blank','width=1000,height=700');
   if (win) { win.document.write('<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Print Forms</title>'+printStyles+'</head><body>'+allHtml+'<scr'+'ipt>window.onload=function(){window.print();window.onafterprint=function(){window.close();};};</'+'script></body></html>'); win.document.close(); }
   else { toast('Pop-up blocked — please allow pop-ups for this site','er'); }
+}
+
+// ── EXPORT EXCEL — same data & rules as Print Forms above, but builds
+// one combined CSV file with a clearly labeled section per checked
+// category, instead of a printable multi-page document.
+function executeExportExcelForms() {
+  var selectedTrips = _pfSelectedTrips.length ? _pfSelectedTrips : getSelectedBudgetTrips();
+  var sections = [];
+
+  function csvRow(cells) {
+    return cells.map(function(c){
+      var s = (c===null||c===undefined) ? '' : String(c).replace(/<[^>]*>/g,' ').replace(/\s+/g,' ').trim();
+      return '"'+s.replace(/"/g,'""')+'"';
+    }).join(',');
+  }
+  function plainCell(info) {
+    // Strip HTML from a _permitCellInfo result down to plain text for
+    // CSV, e.g. "150,000 (5d left)" or "ACTIVE" or "Not Rec."
+    if (!info.html) return '';
+    var text = info.html.replace(/<div[^>]*>/g,' ').replace(/<[^>]*>/g,'').replace(/\s+/g,' ').trim();
+    return text;
+  }
+
+  if (document.getElementById('pf-mileage-form').checked) {
+    var mRows = [csvRow(['S/No','Release','Trip No','Truck','Driver','Destination','KM','Amount (TZS)','Bonus (TZS)'])];
+    var mTotal=0, mBonusTotal=0;
+    selectedTrips.forEach(function(t,ti){
+      var route=ROUTES.find(function(r){return r.destination===t.destination;});
+      var dist=route?parseFloat(route.distanceKM||0):0;
+      var amt=_routeMileageAmount(t.destination);
+      var mReq=FUEL_REQUESTS.filter(function(x){return x.tripId===t.id&&x.requestType==='MILEAGE';})[0];
+      var bonus=mReq?parseFloat(mReq.bonusTZS||0):0;
+      mTotal+=amt; mBonusTotal+=bonus;
+      mRows.push(csvRow([ti+1,t.releaseNo||'—',t.tripNo,t.horse,t.driver||'—',t.destination,dist,amt,bonus>0?bonus:'']));
+    });
+    mRows.push(csvRow(['','','','','','','TOTAL',mTotal,mBonusTotal]));
+    sections.push({title:'MILEAGE REQUEST FORM', rows:mRows});
+  }
+
+  if (document.getElementById('pf-toll-form').checked) {
+    var tollRate=parseFloat(SETTINGS.tollTunduma||330);
+    var tRows = [csvRow(['S/No','Release','Trip No','Truck','Driver','Destination','Amount (USD)'])];
+    var tollTrips=selectedTrips.filter(function(t){return!(t.border||'').toLowerCase().includes('sakania');});
+    tollTrips.forEach(function(t,ti){
+      tRows.push(csvRow([ti+1,t.releaseNo||'—',t.tripNo,t.horse,t.driver||'—',t.destination,tollRate]));
+    });
+    tRows.push(csvRow(['','','','','','TOTAL',tollTrips.length*tollRate]));
+    sections.push({title:'ROAD TOLL REQUEST FORM — TUNDUMA', rows:tRows});
+  }
+
+  if (document.getElementById('pf-fuel-form').checked) {
+    var fuelPrice=parseFloat(SETTINGS.fuelPrice||3200);
+    var fRows = [csvRow(['S/No','Release','Trip No','Truck','Driver','License No','Destination','Litres','Amount (TZS)'])];
+    var fTotalLtrs=0, fTotalAmt=0;
+    selectedTrips.forEach(function(t,ti){
+      var tf=TRUCK_FUEL.find(function(x){return(x.truck||'').toUpperCase()===(t.horse||'').toUpperCase();});
+      var base=tf?parseFloat(tf.baseFuel||0):0;
+      var ltrs=base + _routeFuelAdjust(t.destination);
+      var amt=ltrs*fuelPrice;
+      fTotalLtrs+=ltrs; fTotalAmt+=amt;
+      var drv=DRIVERS.find(function(d){return d.name===t.driver;});
+      var lic=drv?(drv.licenseNo||'—'):'—';
+      fRows.push(csvRow([ti+1,t.releaseNo||'—',t.tripNo,t.horse,t.driver||'—',lic,t.destination,ltrs,amt]));
+    });
+    fRows.push(csvRow(['','','','','','','TOTAL',fTotalLtrs,fTotalAmt]));
+    sections.push({title:'FUEL REQUEST FORM', rows:fRows});
+  }
+
+  if (document.getElementById('pf-trip-permits-form').checked) {
+    var permitTypes=[
+      {key:'COMESA-H', type:'COMESA Horse',   vehicleKey:'horse'},
+      {key:'COMESA-T', type:'COMESA Trailer', vehicleKey:'trailer'},
+      {key:'PRM-H',    type:'Permit Horse',   vehicleKey:'horse'},
+      {key:'PRM-T',    type:'Permit Trailer', vehicleKey:'trailer'},
+      {key:'Carbon',   type:'Carbon Tax',     vehicleKey:'horse'},
+      {key:'ZABS',     type:'ZABS',           vehicleKey:'trailer'},
+    ];
+    var pRows=[csvRow(['S/No','Release','Trip No','Truck','Trailer','Driver'].concat(permitTypes.map(function(p){return p.key;})))];
+    var pTotals={};permitTypes.forEach(function(p){pTotals[p.key]=0;});
+    var pFilteredTrips = selectedTrips.filter(function(t){
+      return permitTypes.some(function(p){
+        var vehiclePlate = p.vehicleKey==='horse' ? t.horse : t.trailer;
+        return _permitCellInfo(vehiclePlate, p.type).status !== 'active';
+      });
+    });
+    pFilteredTrips.forEach(function(t,ti){
+      var cells=permitTypes.map(function(p){
+        var vehiclePlate = p.vehicleKey==='horse' ? t.horse : t.trailer;
+        var info=_permitCellInfo(vehiclePlate, p.type);
+        pTotals[p.key]+=info.amount;
+        return plainCell(info);
+      });
+      pRows.push(csvRow([ti+1,t.releaseNo||'—',t.tripNo,t.horse||'—',t.trailer||'—',t.driver||'—'].concat(cells)));
+    });
+    pRows.push(csvRow(['','','','','','TOTAL'].concat(permitTypes.map(function(p){return pTotals[p.key];}))));
+    sections.push({title:'TRIP PERMITS REQUEST FORM', rows:pRows});
+  }
+
+  if (document.getElementById('pf-vehicle-permits-form').checked) {
+    var vPermitTypes=[
+      {key:'INS-H', type:'Insurance',   vehicleKey:'horse'},
+      {key:'INS-T', type:'Insurance',   vehicleKey:'trailer'},
+      {key:'LAT-H', type:'LATRA',       vehicleKey:'horse'},
+      {key:'LAT-T', type:'LATRA',       vehicleKey:'trailer'},
+      {key:'C28',   type:'C28',         vehicleKey:'trailer'},
+      {key:'Calib', type:'Calibration', vehicleKey:'trailer'},
+    ];
+    var vRows=[csvRow(['S/No','Release','Trip No','Truck','Trailer'].concat(vPermitTypes.map(function(p){return p.key;})))];
+    var vTotals={};vPermitTypes.forEach(function(p){vTotals[p.key]=0;});
+    var vFilteredTrips = selectedTrips.filter(function(t){
+      return vPermitTypes.some(function(p){
+        var vehiclePlate = p.vehicleKey==='horse' ? t.horse : t.trailer;
+        return _permitCellInfo(vehiclePlate, p.type).status !== 'active';
+      });
+    });
+    vFilteredTrips.forEach(function(t,ti){
+      var cells=vPermitTypes.map(function(p){
+        var vehiclePlate = p.vehicleKey==='horse' ? t.horse : t.trailer;
+        var info=_permitCellInfo(vehiclePlate, p.type);
+        vTotals[p.key]+=info.amount;
+        return plainCell(info);
+      });
+      vRows.push(csvRow([ti+1,t.releaseNo||'—',t.tripNo,t.horse||'—',t.trailer||'—'].concat(cells)));
+    });
+    vRows.push(csvRow(['','','','','TOTAL'].concat(vPermitTypes.map(function(p){return vTotals[p.key];}))));
+    sections.push({title:'VEHICLE PERMITS REQUEST FORM', rows:vRows});
+  }
+
+  if (!sections.length) { toast('Select at least one form to export','er'); return; }
+
+  var csv = sections.map(function(s){
+    return '"'+s.title+'"\n' + s.rows.join('\n');
+  }).join('\n\n');
+
+  var blob = new Blob([csv], {type:'text/csv;charset=utf-8;'});
+  var a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'AK_Bulk_Requests_'+today()+'.csv';
+  document.body.appendChild(a); a.click(); document.body.removeChild(a);
+  URL.revokeObjectURL(a.href);
+  closeModal('modal-print-forms');
+  toast('Exported '+sections.length+' section'+(sections.length!==1?'s':'')+' ✓','ok');
 }
 
 // ── REGISTER budget in switchView ────────────────────────────────
@@ -16862,12 +17095,20 @@ function addTripLine() {
   _atLineCount++;
   var n = _atLineCount;
 
-  // Build used horses/trailers from existing trips + current lines
+  // Build used horses/trailers/drivers from existing trips + current
+  // lines + any resource already tied up on another active (not yet
+  // offloaded, not cancelled) trip anywhere in the system.
+  var busy = _getBusyResources();
   var usedHorses   = TRIPS.filter(function(t){ return t.releaseId===_atRelease.id; }).map(function(t){ return (t.horse||'').toUpperCase(); });
   var usedTrailers = TRIPS.filter(function(t){ return t.releaseId===_atRelease.id; }).map(function(t){ return (t.trailer||'').toUpperCase(); });
+  var usedDrivers  = [];
+  Object.keys(busy.horses).forEach(function(k){ usedHorses.push(k); });
+  Object.keys(busy.trailers).forEach(function(k){ usedTrailers.push(k); });
+  Object.keys(busy.drivers).forEach(function(k){ usedDrivers.push(k); });
   document.querySelectorAll('#at-lines-wrap .at-line-card').forEach(function(card){
     var h = card.querySelector('[id^="atl-horse-"]'); if(h && h.value) usedHorses.push(h.value.toUpperCase());
     var t = card.querySelector('[id^="atl-trailer-"]'); if(t && t.value) usedTrailers.push(t.value.toUpperCase());
+    var d = card.querySelector('[id^="atl-driver-"]'); if(d && d.value) usedDrivers.push(d.value.toUpperCase());
   });
 
   var horses   = VEHICLES.filter(function(v){ return !(v.vehicleType||'').toLowerCase().includes('trailer') && usedHorses.indexOf((v.plate||v.code||'').toUpperCase()) < 0; });
@@ -16875,7 +17116,7 @@ function addTripLine() {
 
   var horseItems   = horses.map(function(v){ return v.plate||v.code||''; }).filter(Boolean);
   var trailerItems = trailers.map(function(v){ return v.plate||v.code||''; }).filter(Boolean);
-  var driverItems  = DRIVERS.map(function(d){ return d.name||''; }).filter(Boolean);
+  var driverItems  = DRIVERS.filter(function(d){ return usedDrivers.indexOf((d.name||'').toUpperCase()) < 0; }).map(function(d){ return d.name||''; }).filter(Boolean);
 
   var tripNo = nextId(TRIPS, 'TRP-', 'tripNo');
 
@@ -17088,12 +17329,17 @@ function handleTripBulkFile(input) {
 }
 
 function _validateBulkRows(rows) {
-  // Vehicles already used by other trips in this same release
+  // Vehicles already used by other trips in this same release, PLUS
+  // any vehicle already tied up on another active (not yet offloaded,
+  // not cancelled) trip anywhere in the system.
   var usedTrucks = {}, usedTrailers = {};
   TRIPS.filter(function(t){ return t.releaseId === _atRelease.id; }).forEach(function(t){
     if (t.horse)    usedTrucks[t.horse.toUpperCase()]     = t.tripNo;
     if (t.trailer)  usedTrailers[t.trailer.toUpperCase()] = t.tripNo;
   });
+  var busyBulk = _getBusyResources();
+  Object.keys(busyBulk.horses).forEach(function(k){ if(!usedTrucks[k]) usedTrucks[k] = busyBulk.horses[k]; });
+  Object.keys(busyBulk.trailers).forEach(function(k){ if(!usedTrailers[k]) usedTrailers[k] = busyBulk.trailers[k]; });
 
   // Release truck limit — same check the one-by-one "Add Line" form
   // already enforces, so bulk upload can't assign more trucks than the
@@ -17113,8 +17359,8 @@ function _validateBulkRows(rows) {
     if (!truckVeh) { row.valid=false; row.reason='Truck "'+truck+'" not found in Vehicles'; return row; }
     var trailerVeh = VEHICLES.find(function(v){ return (v.plate||v.code||'').toUpperCase() === trailer; });
     if (!trailerVeh) { row.valid=false; row.reason='Trailer "'+trailer+'" not found in Vehicles'; return row; }
-    if (usedTrucks[truck])   { row.valid=false; row.reason='Truck already assigned to '+usedTrucks[truck]+' in this release'; return row; }
-    if (usedTrailers[trailer]) { row.valid=false; row.reason='Trailer already assigned to '+usedTrailers[trailer]+' in this release'; return row; }
+    if (usedTrucks[truck])   { row.valid=false; row.reason='Truck already assigned to trip '+usedTrucks[truck]+' (not yet offloaded)'; return row; }
+    if (usedTrailers[trailer]) { row.valid=false; row.reason='Trailer already assigned to trip '+usedTrailers[trailer]+' (not yet offloaded)'; return row; }
     if (slotsLeft <= 0) { row.valid=false; row.reason='Release limit reached ('+totalSlots+' truck'+(totalSlots!==1?'s':'')+' already assigned)'; return row; }
 
     // Reserve within this same batch so later duplicate rows, and the
@@ -17230,6 +17476,12 @@ async function submitAllTrips() {
     var loaded    = parseFloat((document.getElementById('atl-loaded-'    + n)||{}).value||0);
     var offloaded = parseFloat((document.getElementById('atl-offloaded-' + n)||{}).value||0);
     if (!h || !t || !d) { blockedMsg = 'Line ' + n + ': Truck, Trailer and Driver are required'; return; }
+    var busyNow = _getBusyResources();
+    if (busyNow.horses[h.toUpperCase()])   { blockedMsg = 'Line ' + n + ': Truck ' + h + ' is already assigned to trip ' + busyNow.horses[h.toUpperCase()] + ' (not yet offloaded)'; return; }
+    if (busyNow.trailers[t.toUpperCase()]) { blockedMsg = 'Line ' + n + ': Trailer ' + t + ' is already assigned to trip ' + busyNow.trailers[t.toUpperCase()] + ' (not yet offloaded)'; return; }
+    if (busyNow.drivers[d.toUpperCase()])  { blockedMsg = 'Line ' + n + ': Driver ' + d + ' is already assigned to trip ' + busyNow.drivers[d.toUpperCase()] + ' (not yet offloaded)'; return; }
+    var dupInBatch = toSave.find(function(x){ return x.horse.toUpperCase()===h.toUpperCase() || x.trailer.toUpperCase()===t.toUpperCase() || x.driver.toUpperCase()===d.toUpperCase(); });
+    if (dupInBatch) { blockedMsg = 'Line ' + n + ': Truck, Trailer, or Driver is already used in another line in this same batch'; return; }
     if (l && !(loaded > 0)) { blockedMsg = 'Line ' + n + ': Vol Loaded is required when Loading Date is filled'; return; }
     if (loaded > 0 && !l) { blockedMsg = 'Line ' + n + ': Loading Date is required when Vol Loaded is filled'; return; }
     if ((o || offloaded > 0) && !(l && loaded > 0)) { blockedMsg = 'Line ' + n + ': Complete Loading Date and Vol Loaded before entering Offloading details'; return; }
@@ -17258,6 +17510,7 @@ async function submitAllTrips() {
     });
   });
 
+  if (blockedMsg) { toast(blockedMsg, 'er'); return; }
   if (!toSave.length) { toast('Fill required fields on at least one line', 'er'); return; }
 
   var saveBtn = document.getElementById('at-save-btn');

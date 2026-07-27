@@ -1034,34 +1034,60 @@ td,td *{font-size:13px!important;font-family:'Inter',sans-serif!important}
       </div>
       <!-- Filters -->
       <div style="padding:10px 22px 8px;flex-shrink:0">
-        <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:8px;margin-bottom:8px">
-          <input type="text" id="permit-search" placeholder="&#128269; Search by vehicle..." oninput="renderPermits()">
-          <select id="permit-filter-type" onchange="renderPermits()" style="font-size:12px;font-weight:600;color:var(--ac)">
-            <option value="">All Permit Types</option>
-            <option id="pft-veh-opts">Insurance</option>
-            <option>LATRA</option><option>C28</option><option>Calibration</option>
-            <option id="pft-trip-opts" style="display:none">COMESA Horse</option>
-            <option style="display:none">COMESA Trailer</option>
-            <option style="display:none">Permit Horse</option>
-            <option style="display:none">Permit Trailer</option>
-            <option style="display:none">Carbon Tax</option>
-            <option style="display:none">ZABS</option>
-          </select>
-          <select id="permit-filter-vtype" onchange="renderPermits()" style="font-size:12px;font-weight:600;color:var(--ac)">
-            <option value="">All Vehicles</option>
-            <option value="horse">Horse</option>
-            <option value="trailer">Trailer</option>
-          </select>
-          <select id="permit-filter-status" onchange="renderPermits()" style="font-size:12px;font-weight:600;color:var(--ac)">
-            <option value="">All Statuses</option>
-            <option value="valid">&#9989; Valid</option>
-            <option value="expiring">&#128993; Expiring Soon</option>
-            <option value="expired">&#128308; Expired</option>
-            <option value="notrecorded">&#9899; Not Recorded</option>
-            <option value="missing">&#128196; Doc Missing</option>
-            <option value="waiting">&#9203; Waiting Approval</option>
-            <option value="approved">&#10003; Approved — Upload</option>
-          </select>
+        <div style="display:grid;grid-template-columns:1.3fr 1fr 1fr 1fr 1fr;gap:8px;margin-bottom:8px">
+          <input type="text" id="permit-search" placeholder="&#128269; Search by vehicle..." oninput="renderPermits()" style="width:100%;font-size:12px;font-weight:600;color:var(--ac);background:#fff;border:1.5px solid var(--br);border-radius:8px;padding:8px 12px;box-sizing:border-box">
+          <div style="position:relative">
+            <select id="permit-filter-type" onchange="renderPermits()" style="width:100%;appearance:none;-webkit-appearance:none;-moz-appearance:none;font-size:12px;font-weight:600;color:var(--ac);background:#fff;border:1.5px solid var(--br);border-radius:8px;padding:8px 28px 8px 12px;box-sizing:border-box;cursor:pointer">
+              <option value="">All Permit Types</option>
+              <option id="pft-veh-opts">Insurance</option>
+              <option>LATRA</option><option>C28</option><option>Calibration</option>
+              <option id="pft-trip-opts" style="display:none">COMESA Horse</option>
+              <option style="display:none">COMESA Trailer</option>
+              <option style="display:none">Permit Horse</option>
+              <option style="display:none">Permit Trailer</option>
+              <option style="display:none">Carbon Tax</option>
+              <option style="display:none">ZABS</option>
+            </select>
+            <span style="position:absolute;right:12px;top:50%;transform:translateY(-50%);font-size:10px;color:var(--t3);pointer-events:none">&#9662;</span>
+          </div>
+          <div style="position:relative">
+            <select id="permit-filter-vtype" onchange="renderPermits()" style="width:100%;appearance:none;-webkit-appearance:none;-moz-appearance:none;font-size:12px;font-weight:600;color:var(--ac);background:#fff;border:1.5px solid var(--br);border-radius:8px;padding:8px 28px 8px 12px;box-sizing:border-box;cursor:pointer">
+              <option value="">All Vehicles</option>
+              <option value="horse">Horse</option>
+              <option value="trailer">Trailer</option>
+            </select>
+            <span style="position:absolute;right:12px;top:50%;transform:translateY(-50%);font-size:10px;color:var(--t3);pointer-events:none">&#9662;</span>
+          </div>
+          <div style="position:relative">
+            <button type="button" onclick="togglePermitReleasePopover()" id="permit-release-btn" style="width:100%;text-align:left;font-size:12px;font-weight:600;color:var(--ac);background:#fff;border:1.5px solid var(--br);border-radius:8px;padding:8px 12px;cursor:pointer;display:flex;justify-content:space-between;align-items:center;box-sizing:border-box">
+              <span id="permit-release-label">All Releases</span><span style="font-size:10px;color:var(--t3)">&#9662;</span>
+            </button>
+            <div id="permit-release-popover" style="display:none;position:absolute;top:calc(100% + 4px);left:0;min-width:220px;max-height:280px;overflow-y:auto;background:#fff;border:1.5px solid var(--br);border-radius:10px;box-shadow:0 6px 20px rgba(0,0,0,.12);z-index:60;padding:8px">
+              <div id="permit-release-cb-list"></div>
+              <div style="border-top:1px solid #eee;margin-top:6px;padding-top:8px;display:flex;justify-content:space-between;gap:8px">
+                <button type="button" onclick="clearPermitReleaseFilter()" style="background:none;border:none;color:var(--t2);font-size:11.5px;font-weight:600;cursor:pointer">Clear all</button>
+                <button type="button" onclick="togglePermitReleasePopover()" style="background:var(--ac);color:#fff;border:none;border-radius:6px;padding:5px 12px;font-size:11.5px;font-weight:600;cursor:pointer">Done</button>
+              </div>
+            </div>
+          </div>
+          <div style="position:relative">
+            <button type="button" onclick="togglePermitStatusPopover()" id="permit-status-btn" style="width:100%;text-align:left;font-size:12px;font-weight:600;color:var(--ac);background:#fff;border:1.5px solid var(--br);border-radius:8px;padding:8px 12px;cursor:pointer;display:flex;justify-content:space-between;align-items:center;box-sizing:border-box">
+              <span id="permit-status-label">All Statuses</span><span style="font-size:10px;color:var(--t3)">&#9662;</span>
+            </button>
+            <div id="permit-status-popover" style="display:none;position:absolute;top:calc(100% + 4px);left:0;min-width:220px;background:#fff;border:1.5px solid var(--br);border-radius:10px;box-shadow:0 6px 20px rgba(0,0,0,.12);z-index:60;padding:8px">
+              <label style="display:flex;align-items:center;gap:8px;padding:7px 8px;border-radius:6px;cursor:pointer;font-size:12.5px"><input type="checkbox" class="permit-status-cb" value="valid" onchange="renderPermits()">&#9989; Valid</label>
+              <label style="display:flex;align-items:center;gap:8px;padding:7px 8px;border-radius:6px;cursor:pointer;font-size:12.5px"><input type="checkbox" class="permit-status-cb" value="expiring" onchange="renderPermits()">&#128993; Expiring Soon</label>
+              <label style="display:flex;align-items:center;gap:8px;padding:7px 8px;border-radius:6px;cursor:pointer;font-size:12.5px"><input type="checkbox" class="permit-status-cb" value="expired" onchange="renderPermits()">&#128308; Expired</label>
+              <label style="display:flex;align-items:center;gap:8px;padding:7px 8px;border-radius:6px;cursor:pointer;font-size:12.5px"><input type="checkbox" class="permit-status-cb" value="notrecorded" onchange="renderPermits()">&#9899; Not Recorded</label>
+              <label style="display:flex;align-items:center;gap:8px;padding:7px 8px;border-radius:6px;cursor:pointer;font-size:12.5px"><input type="checkbox" class="permit-status-cb" value="missing" onchange="renderPermits()">&#128196; Doc Missing</label>
+              <label style="display:flex;align-items:center;gap:8px;padding:7px 8px;border-radius:6px;cursor:pointer;font-size:12.5px"><input type="checkbox" class="permit-status-cb" value="waiting" onchange="renderPermits()">&#9203; Waiting Approval</label>
+              <label style="display:flex;align-items:center;gap:8px;padding:7px 8px;border-radius:6px;cursor:pointer;font-size:12.5px"><input type="checkbox" class="permit-status-cb" value="approved" onchange="renderPermits()">&#10003; Approved — Upload</label>
+              <div style="border-top:1px solid #eee;margin-top:6px;padding-top:8px;display:flex;justify-content:space-between;gap:8px">
+                <button type="button" onclick="clearPermitStatusFilter()" style="background:none;border:none;color:var(--t2);font-size:11.5px;font-weight:600;cursor:pointer">Clear all</button>
+                <button type="button" onclick="togglePermitStatusPopover()" style="background:var(--ac);color:#fff;border:none;border-radius:6px;padding:5px 12px;font-size:11.5px;font-weight:600;cursor:pointer">Done</button>
+              </div>
+            </div>
+          </div>
         </div>
         <div style="margin-bottom:8px">
           <button type="button" onclick="togglePermitDateFilters()" id="permit-datetoggle-btn" style="background:none;border:none;color:var(--ac);font-size:12px;font-weight:600;cursor:pointer;padding:2px 0;display:flex;align-items:center;gap:4px">
@@ -5090,8 +5116,12 @@ function switchPermitTab(tab) {
   // Reset search and status filter
   var search = document.getElementById('permit-search');
   if (search) search.value = '';
-  var sfilt = document.getElementById('permit-filter-status');
-  if (sfilt) sfilt.value = '';
+  document.querySelectorAll('.permit-status-cb').forEach(function(cb){ cb.checked = false; });
+  if (typeof updatePermitStatusLabel === 'function') updatePermitStatusLabel();
+  var statusPop = document.getElementById('permit-status-popover'); if (statusPop) statusPop.style.display = 'none';
+  document.querySelectorAll('.permit-release-cb').forEach(function(cb){ cb.checked = false; });
+  if (typeof updatePermitReleaseLabel === 'function') updatePermitReleaseLabel();
+  var releasePop = document.getElementById('permit-release-popover'); if (releasePop) releasePop.style.display = 'none';
   var vtypeF = document.getElementById('permit-filter-vtype');
   if (vtypeF) vtypeF.value = '';
   ['permit-pay-from','permit-pay-to','permit-exp-from','permit-exp-to'].forEach(function(id){
@@ -5109,8 +5139,23 @@ var _p1_renderPermits = window.renderPermits;
 window.renderPermits = function() {
   var search = (document.getElementById('permit-search') || {}).value || '';
   var tfilt  = (document.getElementById('permit-filter-type') || {}).value || '';
-  var sfilt  = (document.getElementById('permit-filter-status') || {}).value || '';
+  var sfilt  = Array.from(document.querySelectorAll('.permit-status-cb:checked')).map(function(cb){ return cb.value; });
   var vtypeFilt = (document.getElementById('permit-filter-vtype') || {}).value || '';
+  // Release filter: build the set of vehicle plates tied to an active
+  // (not Completed, not Cancelled) trip under any of the selected
+  // releases. null means no release filter is active at all.
+  var selectedReleaseIds = Array.from(document.querySelectorAll('.permit-release-cb:checked')).map(function(cb){ return cb.value; });
+  var releaseFilterPlates = null;
+  if (selectedReleaseIds.length) {
+    releaseFilterPlates = {};
+    TRIPS.forEach(function(t){
+      var st = (t.status||'').toUpperCase();
+      if (st === 'COMPLETED' || st === 'CANCELLED') return;
+      if (selectedReleaseIds.indexOf(t.releaseId) < 0) return;
+      if (t.horse)   releaseFilterPlates[t.horse.toUpperCase()] = true;
+      if (t.trailer) releaseFilterPlates[t.trailer.toUpperCase()] = true;
+    });
+  }
   var payFrom = (document.getElementById('permit-pay-from') || {}).value || '';
   var payTo   = (document.getElementById('permit-pay-to') || {}).value || '';
   var expFrom = (document.getElementById('permit-exp-from') || {}).value || '';
@@ -5179,6 +5224,7 @@ window.renderPermits = function() {
     if (search && !plate.toLowerCase().includes(search.toLowerCase())) return false;
     if (vtypeFilt === 'horse' && vtype !== 'HORSE') return false;
     if (vtypeFilt === 'trailer' && vtype !== 'TRAILER') return false;
+    if (releaseFilterPlates && !releaseFilterPlates[plate.toUpperCase()]) return false;
     return true;
   });
 
@@ -5209,14 +5255,18 @@ window.renderPermits = function() {
       var p       = getLatestPermit(plate, type);
       var renewal = getActiveRenewal(plate, type);
       var info    = permitStatusInfo(p, renewal);
-      if (sfilt) {
-        if (sfilt === 'expired'  && info.label !== 'Expired') return;
-        if (sfilt === 'notrecorded' && info.label !== 'Not Recorded') return;
-        if (sfilt === 'expiring' && info.label !== 'Expiring') return;
-        if (sfilt === 'valid'    && info.label !== 'Valid') return;
-        if (sfilt === 'missing'  && info.label !== 'Doc Missing') return;
-        if (sfilt === 'waiting'  && !info.renewalPending) return;
-        if (sfilt === 'approved' && !info.renewalApproved) return;
+      if (sfilt.length) {
+        var matchesAnyStatus = sfilt.some(function(s){
+          if (s === 'expired')     return info.label === 'Expired';
+          if (s === 'notrecorded') return info.label === 'Not Recorded';
+          if (s === 'expiring')    return info.label === 'Expiring';
+          if (s === 'valid')       return info.label === 'Valid';
+          if (s === 'missing')     return info.label === 'Doc Missing';
+          if (s === 'waiting')     return !!info.renewalPending;
+          if (s === 'approved')    return !!info.renewalApproved;
+          return false;
+        });
+        if (!matchesAnyStatus) return;
       }
       if (payFrom || payTo) {
         if (!p || !p.paymentDate) return;
@@ -9334,8 +9384,12 @@ function switchPermitTab(tab) {
   // Reset search and status filter
   var search = document.getElementById('permit-search');
   if (search) search.value = '';
-  var sfilt = document.getElementById('permit-filter-status');
-  if (sfilt) sfilt.value = '';
+  document.querySelectorAll('.permit-status-cb').forEach(function(cb){ cb.checked = false; });
+  if (typeof updatePermitStatusLabel === 'function') updatePermitStatusLabel();
+  var statusPop = document.getElementById('permit-status-popover'); if (statusPop) statusPop.style.display = 'none';
+  document.querySelectorAll('.permit-release-cb').forEach(function(cb){ cb.checked = false; });
+  if (typeof updatePermitReleaseLabel === 'function') updatePermitReleaseLabel();
+  var releasePop = document.getElementById('permit-release-popover'); if (releasePop) releasePop.style.display = 'none';
   var vtypeF = document.getElementById('permit-filter-vtype');
   if (vtypeF) vtypeF.value = '';
   ['permit-pay-from','permit-pay-to','permit-exp-from','permit-exp-to'].forEach(function(id){
@@ -9353,8 +9407,23 @@ var _p1_renderPermits = window.renderPermits;
 window.renderPermits = function() {
   var search = (document.getElementById('permit-search') || {}).value || '';
   var tfilt  = (document.getElementById('permit-filter-type') || {}).value || '';
-  var sfilt  = (document.getElementById('permit-filter-status') || {}).value || '';
+  var sfilt  = Array.from(document.querySelectorAll('.permit-status-cb:checked')).map(function(cb){ return cb.value; });
   var vtypeFilt = (document.getElementById('permit-filter-vtype') || {}).value || '';
+  // Release filter: build the set of vehicle plates tied to an active
+  // (not Completed, not Cancelled) trip under any of the selected
+  // releases. null means no release filter is active at all.
+  var selectedReleaseIds = Array.from(document.querySelectorAll('.permit-release-cb:checked')).map(function(cb){ return cb.value; });
+  var releaseFilterPlates = null;
+  if (selectedReleaseIds.length) {
+    releaseFilterPlates = {};
+    TRIPS.forEach(function(t){
+      var st = (t.status||'').toUpperCase();
+      if (st === 'COMPLETED' || st === 'CANCELLED') return;
+      if (selectedReleaseIds.indexOf(t.releaseId) < 0) return;
+      if (t.horse)   releaseFilterPlates[t.horse.toUpperCase()] = true;
+      if (t.trailer) releaseFilterPlates[t.trailer.toUpperCase()] = true;
+    });
+  }
   var payFrom = (document.getElementById('permit-pay-from') || {}).value || '';
   var payTo   = (document.getElementById('permit-pay-to') || {}).value || '';
   var expFrom = (document.getElementById('permit-exp-from') || {}).value || '';
@@ -9423,6 +9492,7 @@ window.renderPermits = function() {
     if (search && !plate.toLowerCase().includes(search.toLowerCase())) return false;
     if (vtypeFilt === 'horse' && vtype !== 'HORSE') return false;
     if (vtypeFilt === 'trailer' && vtype !== 'TRAILER') return false;
+    if (releaseFilterPlates && !releaseFilterPlates[plate.toUpperCase()]) return false;
     return true;
   });
 
@@ -9453,14 +9523,18 @@ window.renderPermits = function() {
       var p       = getLatestPermit(plate, type);
       var renewal = getActiveRenewal(plate, type);
       var info    = permitStatusInfo(p, renewal);
-      if (sfilt) {
-        if (sfilt === 'expired'  && info.label !== 'Expired') return;
-        if (sfilt === 'notrecorded' && info.label !== 'Not Recorded') return;
-        if (sfilt === 'expiring' && info.label !== 'Expiring') return;
-        if (sfilt === 'valid'    && info.label !== 'Valid') return;
-        if (sfilt === 'missing'  && info.label !== 'Doc Missing') return;
-        if (sfilt === 'waiting'  && !info.renewalPending) return;
-        if (sfilt === 'approved' && !info.renewalApproved) return;
+      if (sfilt.length) {
+        var matchesAnyStatus = sfilt.some(function(s){
+          if (s === 'expired')     return info.label === 'Expired';
+          if (s === 'notrecorded') return info.label === 'Not Recorded';
+          if (s === 'expiring')    return info.label === 'Expiring';
+          if (s === 'valid')       return info.label === 'Valid';
+          if (s === 'missing')     return info.label === 'Doc Missing';
+          if (s === 'waiting')     return !!info.renewalPending;
+          if (s === 'approved')    return !!info.renewalApproved;
+          return false;
+        });
+        if (!matchesAnyStatus) return;
       }
       if (payFrom || payTo) {
         if (!p || !p.paymentDate) return;
@@ -15681,6 +15755,85 @@ function togglePermitDateFilters() {
   panel.style.display = isOpen ? 'none' : 'block';
   if (icon) icon.innerHTML = isOpen ? '&#9656;' : '&#9662;';
 }
+
+function togglePermitReleasePopover() {
+  var pop = document.getElementById('permit-release-popover');
+  if (!pop) return;
+  var isOpen = pop.style.display !== 'none';
+  if (!isOpen) _populatePermitReleaseCheckboxes();
+  pop.style.display = isOpen ? 'none' : 'block';
+  if (isOpen) { updatePermitReleaseLabel(); renderPermits(); }
+}
+function clearPermitReleaseFilter() {
+  document.querySelectorAll('.permit-release-cb').forEach(function(cb){ cb.checked = false; });
+  updatePermitReleaseLabel();
+  renderPermits();
+}
+function updatePermitReleaseLabel() {
+  var checked = Array.from(document.querySelectorAll('.permit-release-cb:checked'));
+  var label = document.getElementById('permit-release-label');
+  if (!label) return;
+  if (!checked.length) label.textContent = 'All Releases';
+  else if (checked.length === 1) label.textContent = checked[0].parentElement.textContent.trim();
+  else label.textContent = checked.length + ' releases selected';
+}
+function _populatePermitReleaseCheckboxes() {
+  var listEl = document.getElementById('permit-release-cb-list');
+  if (!listEl) return;
+  // Only releases with at least one currently active trip (not
+  // Completed, not Cancelled) appear here at all.
+  var activeReleaseIds = {};
+  TRIPS.forEach(function(t){
+    var st = (t.status||'').toUpperCase();
+    if (st === 'COMPLETED' || st === 'CANCELLED') return;
+    if (t.releaseId) activeReleaseIds[t.releaseId] = true;
+  });
+  var activeReleases = RELEASES.filter(function(r){ return activeReleaseIds[r.id]; });
+  var prevChecked = Array.from(document.querySelectorAll('.permit-release-cb:checked')).map(function(cb){ return cb.value; });
+  listEl.innerHTML = activeReleases.length ? activeReleases.map(function(r){
+    var checked = prevChecked.indexOf(r.id) >= 0 ? 'checked' : '';
+    return '<label style="display:flex;align-items:center;gap:8px;padding:7px 8px;border-radius:6px;cursor:pointer;font-size:12.5px"><input type="checkbox" class="permit-release-cb" value="'+esc(r.id)+'" '+checked+' onchange="renderPermits()">'+esc(r.releaseNo||'—')+'</label>';
+  }).join('') : '<div style="font-size:12px;color:var(--t3);padding:8px 4px">No active releases</div>';
+}
+// Close the release popover when clicking anywhere outside it
+document.addEventListener('click', function(e){
+  var pop = document.getElementById('permit-release-popover');
+  var btn = document.getElementById('permit-release-btn');
+  if (!pop || pop.style.display === 'none') return;
+  if (pop.contains(e.target) || (btn && btn.contains(e.target))) return;
+  pop.style.display = 'none';
+  updatePermitReleaseLabel();
+});
+
+function togglePermitStatusPopover() {
+  var pop = document.getElementById('permit-status-popover');
+  if (!pop) return;
+  var isOpen = pop.style.display !== 'none';
+  pop.style.display = isOpen ? 'none' : 'block';
+  if (isOpen) { updatePermitStatusLabel(); renderPermits(); }
+}
+function clearPermitStatusFilter() {
+  document.querySelectorAll('.permit-status-cb').forEach(function(cb){ cb.checked = false; });
+  updatePermitStatusLabel();
+  renderPermits();
+}
+function updatePermitStatusLabel() {
+  var checked = Array.from(document.querySelectorAll('.permit-status-cb:checked'));
+  var label = document.getElementById('permit-status-label');
+  if (!label) return;
+  if (!checked.length) label.textContent = 'All Statuses';
+  else if (checked.length === 1) label.textContent = checked[0].parentElement.textContent.trim();
+  else label.textContent = checked.length + ' statuses selected';
+}
+// Close the popover when clicking anywhere outside it
+document.addEventListener('click', function(e){
+  var pop = document.getElementById('permit-status-popover');
+  var btn = document.getElementById('permit-status-btn');
+  if (!pop || pop.style.display === 'none') return;
+  if (pop.contains(e.target) || (btn && btn.contains(e.target))) return;
+  pop.style.display = 'none';
+  updatePermitStatusLabel();
+});
 
 function clearPermitPayRange() {
   var f=document.getElementById('permit-pay-from'); if(f) f.value='';

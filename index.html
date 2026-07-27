@@ -417,14 +417,16 @@ td,td *{font-size:13px!important;font-family:'Inter',sans-serif!important}
         <span style="font-size:10px;font-weight:700;color:#166534;text-transform:uppercase;letter-spacing:.05em;margin-right:10px;padding:3px 8px;background:#f0fdf4;border-radius:4px">Trip Permits</span>
         <span style="font-size:11px;display:flex;align-items:center;gap:5px;margin-right:12px"><span style="font-size:13px;line-height:1">&#10003;&#65039;</span> Valid</span>
         <span style="font-size:11px;display:flex;align-items:center;gap:5px;margin-right:12px"><svg width="11" height="11" viewBox="0 0 12 12" style="flex-shrink:0;display:inline-block;vertical-align:middle"><circle cx="6" cy="6" r="5" fill="#f59e0b"/></svg> Expiring / Waiting</span>
-        <span style="font-size:11px;display:flex;align-items:center;gap:5px;margin-right:12px"><svg width="11" height="11" viewBox="0 0 12 12" style="flex-shrink:0;display:inline-block;vertical-align:middle"><circle cx="6" cy="6" r="5" fill="#ef4444"/></svg> Expired / Not Rec.</span>
+        <span style="font-size:11px;display:flex;align-items:center;gap:5px;margin-right:12px"><svg width="11" height="11" viewBox="0 0 12 12" style="flex-shrink:0;display:inline-block;vertical-align:middle"><circle cx="6" cy="6" r="5" fill="#ef4444"/></svg> Expired</span>
+        <span style="font-size:11px;display:flex;align-items:center;gap:5px;margin-right:12px"><svg width="11" height="11" viewBox="0 0 12 12" style="flex-shrink:0;display:inline-block;vertical-align:middle"><circle cx="6" cy="6" r="5" fill="#6b7280"/></svg> Not Rec.</span>
         <span style="font-size:11px;display:flex;align-items:center;gap:5px;margin-right:24px"><svg width="11" height="11" viewBox="0 0 12 12" style="flex-shrink:0;display:inline-block;vertical-align:middle"><circle cx="6" cy="6" r="5" fill="#3b82f6"/></svg> Upload Pending</span>
 
         <!-- Vehicle Permits group -->
         <span style="font-size:10px;font-weight:700;color:#92400e;text-transform:uppercase;letter-spacing:.05em;margin-right:10px;padding:3px 8px;background:#fff7ed;border-radius:4px">Vehicle Permits</span>
         <span style="font-size:11px;display:flex;align-items:center;gap:5px;margin-right:12px"><span style="font-size:13px;line-height:1">&#10003;&#65039;</span> Valid</span>
         <span style="font-size:11px;display:flex;align-items:center;gap:5px;margin-right:12px"><svg width="11" height="11" viewBox="0 0 12 12" style="flex-shrink:0;display:inline-block;vertical-align:middle"><circle cx="6" cy="6" r="5" fill="#f59e0b"/></svg> Expiring / Waiting</span>
-        <span style="font-size:11px;display:flex;align-items:center;gap:5px;margin-right:12px"><svg width="11" height="11" viewBox="0 0 12 12" style="flex-shrink:0;display:inline-block;vertical-align:middle"><circle cx="6" cy="6" r="5" fill="#ef4444"/></svg> Expired / Not Rec.</span>
+        <span style="font-size:11px;display:flex;align-items:center;gap:5px;margin-right:12px"><svg width="11" height="11" viewBox="0 0 12 12" style="flex-shrink:0;display:inline-block;vertical-align:middle"><circle cx="6" cy="6" r="5" fill="#ef4444"/></svg> Expired</span>
+        <span style="font-size:11px;display:flex;align-items:center;gap:5px;margin-right:12px"><svg width="11" height="11" viewBox="0 0 12 12" style="flex-shrink:0;display:inline-block;vertical-align:middle"><circle cx="6" cy="6" r="5" fill="#6b7280"/></svg> Not Rec.</span>
         <span style="font-size:11px;display:flex;align-items:center;gap:5px"><svg width="11" height="11" viewBox="0 0 12 12" style="flex-shrink:0;display:inline-block;vertical-align:middle"><circle cx="6" cy="6" r="5" fill="#3b82f6"/></svg> Upload Pending</span>
       </div>
       <div id="budget-content" style="flex:1;min-height:0;overflow-x:auto;overflow-y:auto;padding:0 22px 20px">
@@ -1050,10 +1052,34 @@ td,td *{font-size:13px!important;font-family:'Inter',sans-serif!important}
             <option value="valid">&#9989; Valid</option>
             <option value="expiring">&#128993; Expiring Soon</option>
             <option value="expired">&#128308; Expired</option>
+            <option value="notrecorded">&#9899; Not Recorded</option>
             <option value="missing">&#128196; Doc Missing</option>
             <option value="waiting">&#9203; Waiting Approval</option>
             <option value="approved">&#10003; Approved — Upload</option>
           </select>
+        </div>
+        <div style="margin-bottom:8px">
+          <button type="button" onclick="togglePermitDateFilters()" id="permit-datetoggle-btn" style="background:none;border:none;color:var(--ac);font-size:12px;font-weight:600;cursor:pointer;padding:2px 0;display:flex;align-items:center;gap:4px">
+            <span id="permit-datetoggle-icon">&#9656;</span> &#128197; Filter by Date
+          </button>
+        </div>
+        <div id="permit-date-filters" style="display:none">
+        <!-- Payment Date range -->
+        <div style="display:flex;gap:8px;align-items:center;background:rgba(10,45,110,.05);border:1px solid rgba(10,45,110,.15);border-radius:8px;padding:8px 12px;margin-bottom:8px">
+          <span style="font-size:11px;font-weight:700;color:var(--ac);white-space:nowrap">&#128197; Payment Date:</span>
+          <input type="date" id="permit-pay-from" onchange="renderPermits()" style="border:1.5px solid var(--br);border-radius:7px;padding:7px 10px;font-size:13px;outline:none;min-width:160px">
+          <span style="color:var(--t2);font-size:12px">to</span>
+          <input type="date" id="permit-pay-to" onchange="renderPermits()" style="border:1.5px solid var(--br);border-radius:7px;padding:7px 10px;font-size:13px;outline:none;min-width:160px">
+          <button class="btn bg" onclick="clearPermitPayRange()" style="padding:5px 10px;font-size:11px;margin-left:auto">&#10005; Clear</button>
+        </div>
+        <!-- Expiry Date range -->
+        <div style="display:flex;gap:8px;align-items:center;background:rgba(10,45,110,.05);border:1px solid rgba(10,45,110,.15);border-radius:8px;padding:8px 12px;margin-bottom:8px">
+          <span style="font-size:11px;font-weight:700;color:var(--ac);white-space:nowrap">&#128197; Expiry Date:</span>
+          <input type="date" id="permit-exp-from" onchange="renderPermits()" style="border:1.5px solid var(--br);border-radius:7px;padding:7px 10px;font-size:13px;outline:none;min-width:160px">
+          <span style="color:var(--t2);font-size:12px">to</span>
+          <input type="date" id="permit-exp-to" onchange="renderPermits()" style="border:1.5px solid var(--br);border-radius:7px;padding:7px 10px;font-size:13px;outline:none;min-width:160px">
+          <button class="btn bg" onclick="clearPermitExpRange()" style="padding:5px 10px;font-size:11px;margin-left:auto">&#10005; Clear</button>
+        </div>
         </div>
         <div style="display:flex;align-items:center;gap:8px">
           <div style="flex:1"></div>
@@ -4451,7 +4477,7 @@ function _permitCellInfo(vehiclePlate, permitTypeName) {
     return (p.vehicle||'').toUpperCase() === vehiclePlate.toUpperCase() && p.permitType === permitTypeName;
   });
   var latest = records.sort(function(a,b){ return new Date(b.paymentDate||0)-new Date(a.paymentDate||0); })[0];
-  if (!latest) return {html:'<span style="color:#b91c1c;font-weight:700;font-size:10px">Not Rec.</span>', amount:0, status:'notrec'};
+  if (!latest) return {html:'<span style="color:#374151;font-weight:700;font-size:10px">Not Rec.</span>', amount:0, status:'notrec'};
   var exp = new Date(latest.expiryDate||''); exp.setHours(0,0,0,0);
   var today_dt = new Date(); today_dt.setHours(0,0,0,0);
   var daysLeft = Math.ceil((exp-today_dt)/86400000);
@@ -5061,6 +5087,11 @@ function switchPermitTab(tab) {
   if (search) search.value = '';
   var sfilt = document.getElementById('permit-filter-status');
   if (sfilt) sfilt.value = '';
+  ['permit-pay-from','permit-pay-to','permit-exp-from','permit-exp-to'].forEach(function(id){
+    var el = document.getElementById(id); if (el) el.value = '';
+  });
+  var dpanel = document.getElementById('permit-date-filters'); if (dpanel) dpanel.style.display = 'none';
+  var dicon  = document.getElementById('permit-datetoggle-icon'); if (dicon) dicon.innerHTML = '&#9656;';
 
   renderPermits();
 }
@@ -5072,6 +5103,10 @@ window.renderPermits = function() {
   var search = (document.getElementById('permit-search') || {}).value || '';
   var tfilt  = (document.getElementById('permit-filter-type') || {}).value || '';
   var sfilt  = (document.getElementById('permit-filter-status') || {}).value || '';
+  var payFrom = (document.getElementById('permit-pay-from') || {}).value || '';
+  var payTo   = (document.getElementById('permit-pay-to') || {}).value || '';
+  var expFrom = (document.getElementById('permit-exp-from') || {}).value || '';
+  var expTo   = (document.getElementById('permit-exp-to') || {}).value || '';
 
   var today_dt = new Date(); today_dt.setHours(0,0,0,0);
   var alertDays = parseInt(SETTINGS.expiryAlertDays) || 30;
@@ -5100,7 +5135,7 @@ window.renderPermits = function() {
       if (renewal.status === 'PENDING')  return {class:'sAM', icon:'⏳', label:'Waiting for Approval', days:null, blocked:false, renewalPending:true};
       if (renewal.status === 'APPROVED') return {class:'sBL', icon:'✅', label:'Approved — Upload Doc', days:null, blocked:false, renewalApproved:true};
     }
-    if (!permit) return {class:'sRD', icon:'🔴', label:'Not Recorded', days:null, blocked:true};
+    if (!permit) return {class:'sGY', icon:'⚫', label:'Not Recorded', days:null, blocked:true};
     var exp = new Date(permit.expiryDate||''); exp.setHours(0,0,0,0);
     var daysLeft = Math.ceil((exp - today_dt) / 86400000);
     if (isNaN(exp.getTime())) return {class:'sAM', icon:'⚠️', label:'No Expiry Date', days:null, blocked:false, warning:true};
@@ -5165,12 +5200,25 @@ window.renderPermits = function() {
       var renewal = getActiveRenewal(plate, type);
       var info    = permitStatusInfo(p, renewal);
       if (sfilt) {
-        if (sfilt === 'expired'  && info.label !== 'Expired' && info.label !== 'Not Recorded') return;
+        if (sfilt === 'expired'  && info.label !== 'Expired') return;
+        if (sfilt === 'notrecorded' && info.label !== 'Not Recorded') return;
         if (sfilt === 'expiring' && info.label !== 'Expiring') return;
         if (sfilt === 'valid'    && info.label !== 'Valid') return;
         if (sfilt === 'missing'  && info.label !== 'Doc Missing') return;
         if (sfilt === 'waiting'  && !info.renewalPending) return;
         if (sfilt === 'approved' && !info.renewalApproved) return;
+      }
+      if (payFrom || payTo) {
+        if (!p || !p.paymentDate) return;
+        var payD = new Date(p.paymentDate); payD.setHours(0,0,0,0);
+        if (payFrom && payD < new Date(payFrom)) return;
+        if (payTo && payD > new Date(payTo)) return;
+      }
+      if (expFrom || expTo) {
+        if (!p || !p.expiryDate) return;
+        var expD = new Date(p.expiryDate); expD.setHours(0,0,0,0);
+        if (expFrom && expD < new Date(expFrom)) return;
+        if (expTo && expD > new Date(expTo)) return;
       }
       filtered.push({vehicle:plate, vType:v.vehicleType||'', type:type, permit:p, renewal:renewal, info:info});
     });
@@ -9278,6 +9326,11 @@ function switchPermitTab(tab) {
   if (search) search.value = '';
   var sfilt = document.getElementById('permit-filter-status');
   if (sfilt) sfilt.value = '';
+  ['permit-pay-from','permit-pay-to','permit-exp-from','permit-exp-to'].forEach(function(id){
+    var el = document.getElementById(id); if (el) el.value = '';
+  });
+  var dpanel = document.getElementById('permit-date-filters'); if (dpanel) dpanel.style.display = 'none';
+  var dicon  = document.getElementById('permit-datetoggle-icon'); if (dicon) dicon.innerHTML = '&#9656;';
 
   renderPermits();
 }
@@ -9289,6 +9342,10 @@ window.renderPermits = function() {
   var search = (document.getElementById('permit-search') || {}).value || '';
   var tfilt  = (document.getElementById('permit-filter-type') || {}).value || '';
   var sfilt  = (document.getElementById('permit-filter-status') || {}).value || '';
+  var payFrom = (document.getElementById('permit-pay-from') || {}).value || '';
+  var payTo   = (document.getElementById('permit-pay-to') || {}).value || '';
+  var expFrom = (document.getElementById('permit-exp-from') || {}).value || '';
+  var expTo   = (document.getElementById('permit-exp-to') || {}).value || '';
 
   var today_dt = new Date(); today_dt.setHours(0,0,0,0);
   var alertDays = parseInt(SETTINGS.expiryAlertDays) || 30;
@@ -9317,7 +9374,7 @@ window.renderPermits = function() {
       if (renewal.status === 'PENDING')  return {class:'sAM', icon:'⏳', label:'Waiting for Approval', days:null, blocked:false, renewalPending:true};
       if (renewal.status === 'APPROVED') return {class:'sBL', icon:'✅', label:'Approved — Upload Doc', days:null, blocked:false, renewalApproved:true};
     }
-    if (!permit) return {class:'sRD', icon:'🔴', label:'Not Recorded', days:null, blocked:true};
+    if (!permit) return {class:'sGY', icon:'⚫', label:'Not Recorded', days:null, blocked:true};
     var exp = new Date(permit.expiryDate||''); exp.setHours(0,0,0,0);
     var daysLeft = Math.ceil((exp - today_dt) / 86400000);
     if (isNaN(exp.getTime())) return {class:'sAM', icon:'⚠️', label:'No Expiry Date', days:null, blocked:false, warning:true};
@@ -9382,12 +9439,25 @@ window.renderPermits = function() {
       var renewal = getActiveRenewal(plate, type);
       var info    = permitStatusInfo(p, renewal);
       if (sfilt) {
-        if (sfilt === 'expired'  && info.label !== 'Expired' && info.label !== 'Not Recorded') return;
+        if (sfilt === 'expired'  && info.label !== 'Expired') return;
+        if (sfilt === 'notrecorded' && info.label !== 'Not Recorded') return;
         if (sfilt === 'expiring' && info.label !== 'Expiring') return;
         if (sfilt === 'valid'    && info.label !== 'Valid') return;
         if (sfilt === 'missing'  && info.label !== 'Doc Missing') return;
         if (sfilt === 'waiting'  && !info.renewalPending) return;
         if (sfilt === 'approved' && !info.renewalApproved) return;
+      }
+      if (payFrom || payTo) {
+        if (!p || !p.paymentDate) return;
+        var payD = new Date(p.paymentDate); payD.setHours(0,0,0,0);
+        if (payFrom && payD < new Date(payFrom)) return;
+        if (payTo && payD > new Date(payTo)) return;
+      }
+      if (expFrom || expTo) {
+        if (!p || !p.expiryDate) return;
+        var expD = new Date(p.expiryDate); expD.setHours(0,0,0,0);
+        if (expFrom && expD < new Date(expFrom)) return;
+        if (expTo && expD > new Date(expTo)) return;
       }
       filtered.push({vehicle:plate, vType:v.vehicleType||'', type:type, permit:p, renewal:renewal, info:info});
     });
@@ -15588,6 +15658,26 @@ function onRelFChange() {
   var lbl = document.getElementById('rel-daterange-label');
   if(lbl) lbl.textContent = hasDate ? 'Filtering: Release Date' : '';
 }
+function togglePermitDateFilters() {
+  var panel = document.getElementById('permit-date-filters');
+  var icon  = document.getElementById('permit-datetoggle-icon');
+  if (!panel) return;
+  var isOpen = panel.style.display !== 'none';
+  panel.style.display = isOpen ? 'none' : 'block';
+  if (icon) icon.innerHTML = isOpen ? '&#9656;' : '&#9662;';
+}
+
+function clearPermitPayRange() {
+  var f=document.getElementById('permit-pay-from'); if(f) f.value='';
+  var t=document.getElementById('permit-pay-to');   if(t) t.value='';
+  renderPermits();
+}
+function clearPermitExpRange() {
+  var f=document.getElementById('permit-exp-from'); if(f) f.value='';
+  var t=document.getElementById('permit-exp-to');   if(t) t.value='';
+  renderPermits();
+}
+
 function clearRelDateRange() {
   var f=document.getElementById('RF_DATE_FROM'); if(f) f.value='';
   var t=document.getElementById('RF_DATE_TO');   if(t) t.value='';
@@ -16067,7 +16157,7 @@ function renderBudget() {
             && (p.permitType||'').toLowerCase().includes(type.toLowerCase());
       });
       var latest = records.sort(function(a,b){return new Date(b.paymentDate||0)-new Date(a.paymentDate||0);})[0];
-      if(!latest) return {icon:circle('#ef4444')+'<span style="'+lblStyle+';color:#b91c1c">not rec.</span>',bg:'#fef2f2',tip:'Not Recorded — no '+type+' permit for '+vehicle};
+      if(!latest) return {icon:circle('#6b7280')+'<span style="'+lblStyle+';color:#374151">not rec.</span>',bg:'#f3f4f6',tip:'Not Recorded — no '+type+' permit for '+vehicle};
       var exp = new Date(latest.expiryDate||''); exp.setHours(0,0,0,0);
       var daysLeft = Math.ceil((exp-today_dt)/86400000);
       if(exp < today_dt)  return {icon:circle('#ef4444')+'<span style="'+lblStyle+';color:#b91c1c">expired</span>',bg:'#fef2f2',tip:'Expired — '+fmtDate(latest.expiryDate)};
@@ -16131,7 +16221,7 @@ function renderBudget() {
       }
       var records = PERMITS.filter(function(p){return(p.vehicle||'').toUpperCase()===vehicle.toUpperCase()&&p.permitType===type;});
       var latest  = records.sort(function(a,b){return new Date(b.paymentDate||0)-new Date(a.paymentDate||0);})[0];
-      if(!latest) return {icon:circle('#ef4444')+'<span style="'+lblStyle+';color:#b91c1c">not rec.</span>',bg:'#fef2f2',tip:'Not Recorded — no permit entry found'};
+      if(!latest) return {icon:circle('#6b7280')+'<span style="'+lblStyle+';color:#374151">not rec.</span>',bg:'#f3f4f6',tip:'Not Recorded — no permit entry found'};
       var exp = new Date(latest.expiryDate||''); exp.setHours(0,0,0,0);
       var daysLeft = Math.ceil((exp-today_dt)/86400000);
       if(exp < today_dt)  return {icon:circle('#ef4444')+'<span style="'+lblStyle+';color:#b91c1c">expired</span>',bg:'#fef2f2',tip:'Expired — '+fmtDate(latest.expiryDate)};

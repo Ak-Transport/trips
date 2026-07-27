@@ -1034,7 +1034,7 @@ td,td *{font-size:13px!important;font-family:'Inter',sans-serif!important}
       </div>
       <!-- Filters -->
       <div style="padding:10px 22px 8px;flex-shrink:0">
-        <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:8px">
+        <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:8px;margin-bottom:8px">
           <input type="text" id="permit-search" placeholder="&#128269; Search by vehicle..." oninput="renderPermits()">
           <select id="permit-filter-type" onchange="renderPermits()" style="font-size:12px;font-weight:600;color:var(--ac)">
             <option value="">All Permit Types</option>
@@ -1046,6 +1046,11 @@ td,td *{font-size:13px!important;font-family:'Inter',sans-serif!important}
             <option style="display:none">Permit Trailer</option>
             <option style="display:none">Carbon Tax</option>
             <option style="display:none">ZABS</option>
+          </select>
+          <select id="permit-filter-vtype" onchange="renderPermits()" style="font-size:12px;font-weight:600;color:var(--ac)">
+            <option value="">All Vehicles</option>
+            <option value="horse">Horse</option>
+            <option value="trailer">Trailer</option>
           </select>
           <select id="permit-filter-status" onchange="renderPermits()" style="font-size:12px;font-weight:600;color:var(--ac)">
             <option value="">All Statuses</option>
@@ -5087,6 +5092,8 @@ function switchPermitTab(tab) {
   if (search) search.value = '';
   var sfilt = document.getElementById('permit-filter-status');
   if (sfilt) sfilt.value = '';
+  var vtypeF = document.getElementById('permit-filter-vtype');
+  if (vtypeF) vtypeF.value = '';
   ['permit-pay-from','permit-pay-to','permit-exp-from','permit-exp-to'].forEach(function(id){
     var el = document.getElementById(id); if (el) el.value = '';
   });
@@ -5103,6 +5110,7 @@ window.renderPermits = function() {
   var search = (document.getElementById('permit-search') || {}).value || '';
   var tfilt  = (document.getElementById('permit-filter-type') || {}).value || '';
   var sfilt  = (document.getElementById('permit-filter-status') || {}).value || '';
+  var vtypeFilt = (document.getElementById('permit-filter-vtype') || {}).value || '';
   var payFrom = (document.getElementById('permit-pay-from') || {}).value || '';
   var payTo   = (document.getElementById('permit-pay-to') || {}).value || '';
   var expFrom = (document.getElementById('permit-exp-from') || {}).value || '';
@@ -5169,6 +5177,8 @@ window.renderPermits = function() {
     // no relevant permits for.
     if (vtype !== 'HORSE' && vtype !== 'TRAILER' && !_plateShasPermit[plate.toUpperCase()]) return false;
     if (search && !plate.toLowerCase().includes(search.toLowerCase())) return false;
+    if (vtypeFilt === 'horse' && vtype !== 'HORSE') return false;
+    if (vtypeFilt === 'trailer' && vtype !== 'TRAILER') return false;
     return true;
   });
 
@@ -5326,11 +5336,11 @@ function _getSelectedPmtRows() {
 function permitsExportExcel() {
   var selected = _getSelectedPmtRows();
   if (!selected.length) { toast('Select at least one permit','er'); return; }
-  var headers = ['Vehicle','Vehicle Type','Permit Type','Payment Date','Expiry Date','Amount Paid (TZS)','Status'];
+  var headers = ['S/No','Vehicle','Vehicle Type','Permit Type','Payment Date','Expiry Date','Amount Paid (TZS)','Status'];
   var csvRows = [headers.join(',')];
-  selected.forEach(function(f){
+  selected.forEach(function(f, fIdx){
     var p = f.permit;
-    var cells = [f.vehicle, f.vType, f.type, p?fmtDate(p.paymentDate):'—', p?fmtDate(p.expiryDate):'—', p?(p.amountPaid||0):0, f.info.label];
+    var cells = [fIdx+1, f.vehicle, f.vType, f.type, p?fmtDate(p.paymentDate):'—', p?fmtDate(p.expiryDate):'—', p?(p.amountPaid||0):0, f.info.label];
     csvRows.push(cells.map(function(c){ return '"'+String(c).replace(/"/g,'""')+'"'; }).join(','));
   });
   var csv  = csvRows.join('\n');
@@ -5347,19 +5357,19 @@ function permitsExportPDF() {
   var selected = _getSelectedPmtRows();
   if (!selected.length) { toast('Select at least one permit','er'); return; }
   var totalAmt = 0;
-  var rows = selected.map(function(f){
+  var rows = selected.map(function(f, fIdx){
     var p = f.permit;
     totalAmt += p ? parseFloat(p.amountPaid||0) : 0;
-    return '<tr><td><b>'+esc(f.vehicle)+'</b></td><td>'+esc(f.vType)+'</td><td>'+esc(f.type)+'</td>'
+    return '<tr><td>'+(fIdx+1)+'</td><td><b>'+esc(f.vehicle)+'</b></td><td>'+esc(f.vType)+'</td><td>'+esc(f.type)+'</td>'
       +'<td>'+(p?fmtDate(p.paymentDate):'—')+'</td><td>'+(p?fmtDate(p.expiryDate):'—')+'</td>'
       +'<td style="text-align:right">'+(p?fmt(p.amountPaid||0):'—')+'</td><td>'+esc(f.info.label)+'</td></tr>';
   }).join('');
   _printFormWindow({
     title: 'Permits & Docs',
     formTitle: 'Permits & Docs',
-    theadHtml: '<tr><th>Vehicle</th><th>Vehicle Type</th><th>Permit Type</th><th>Payment Date</th><th>Expiry Date</th><th style="text-align:right">Amount (TZS)</th><th>Status</th></tr>',
+    theadHtml: '<tr><th>S/No</th><th>Vehicle</th><th>Vehicle Type</th><th>Permit Type</th><th>Payment Date</th><th>Expiry Date</th><th style="text-align:right">Amount (TZS)</th><th>Status</th></tr>',
     tbodyHtml: rows,
-    tfootHtml: '<tr><td colspan="5" style="text-align:right">TOTAL</td><td style="text-align:right">'+fmt(totalAmt)+'</td><td></td></tr>',
+    tfootHtml: '<tr><td colspan="6" style="text-align:right">TOTAL</td><td style="text-align:right">'+fmt(totalAmt)+'</td><td></td></tr>',
     noSignatures: true
   });
 }
@@ -9326,6 +9336,8 @@ function switchPermitTab(tab) {
   if (search) search.value = '';
   var sfilt = document.getElementById('permit-filter-status');
   if (sfilt) sfilt.value = '';
+  var vtypeF = document.getElementById('permit-filter-vtype');
+  if (vtypeF) vtypeF.value = '';
   ['permit-pay-from','permit-pay-to','permit-exp-from','permit-exp-to'].forEach(function(id){
     var el = document.getElementById(id); if (el) el.value = '';
   });
@@ -9342,6 +9354,7 @@ window.renderPermits = function() {
   var search = (document.getElementById('permit-search') || {}).value || '';
   var tfilt  = (document.getElementById('permit-filter-type') || {}).value || '';
   var sfilt  = (document.getElementById('permit-filter-status') || {}).value || '';
+  var vtypeFilt = (document.getElementById('permit-filter-vtype') || {}).value || '';
   var payFrom = (document.getElementById('permit-pay-from') || {}).value || '';
   var payTo   = (document.getElementById('permit-pay-to') || {}).value || '';
   var expFrom = (document.getElementById('permit-exp-from') || {}).value || '';
@@ -9408,6 +9421,8 @@ window.renderPermits = function() {
     // no relevant permits for.
     if (vtype !== 'HORSE' && vtype !== 'TRAILER' && !_plateShasPermit[plate.toUpperCase()]) return false;
     if (search && !plate.toLowerCase().includes(search.toLowerCase())) return false;
+    if (vtypeFilt === 'horse' && vtype !== 'HORSE') return false;
+    if (vtypeFilt === 'trailer' && vtype !== 'TRAILER') return false;
     return true;
   });
 
@@ -9565,11 +9580,11 @@ function _getSelectedPmtRows() {
 function permitsExportExcel() {
   var selected = _getSelectedPmtRows();
   if (!selected.length) { toast('Select at least one permit','er'); return; }
-  var headers = ['Vehicle','Vehicle Type','Permit Type','Payment Date','Expiry Date','Amount Paid (TZS)','Status'];
+  var headers = ['S/No','Vehicle','Vehicle Type','Permit Type','Payment Date','Expiry Date','Amount Paid (TZS)','Status'];
   var csvRows = [headers.join(',')];
-  selected.forEach(function(f){
+  selected.forEach(function(f, fIdx){
     var p = f.permit;
-    var cells = [f.vehicle, f.vType, f.type, p?fmtDate(p.paymentDate):'—', p?fmtDate(p.expiryDate):'—', p?(p.amountPaid||0):0, f.info.label];
+    var cells = [fIdx+1, f.vehicle, f.vType, f.type, p?fmtDate(p.paymentDate):'—', p?fmtDate(p.expiryDate):'—', p?(p.amountPaid||0):0, f.info.label];
     csvRows.push(cells.map(function(c){ return '"'+String(c).replace(/"/g,'""')+'"'; }).join(','));
   });
   var csv  = csvRows.join('\n');
@@ -9586,19 +9601,19 @@ function permitsExportPDF() {
   var selected = _getSelectedPmtRows();
   if (!selected.length) { toast('Select at least one permit','er'); return; }
   var totalAmt = 0;
-  var rows = selected.map(function(f){
+  var rows = selected.map(function(f, fIdx){
     var p = f.permit;
     totalAmt += p ? parseFloat(p.amountPaid||0) : 0;
-    return '<tr><td><b>'+esc(f.vehicle)+'</b></td><td>'+esc(f.vType)+'</td><td>'+esc(f.type)+'</td>'
+    return '<tr><td>'+(fIdx+1)+'</td><td><b>'+esc(f.vehicle)+'</b></td><td>'+esc(f.vType)+'</td><td>'+esc(f.type)+'</td>'
       +'<td>'+(p?fmtDate(p.paymentDate):'—')+'</td><td>'+(p?fmtDate(p.expiryDate):'—')+'</td>'
       +'<td style="text-align:right">'+(p?fmt(p.amountPaid||0):'—')+'</td><td>'+esc(f.info.label)+'</td></tr>';
   }).join('');
   _printFormWindow({
     title: 'Permits & Docs',
     formTitle: 'Permits & Docs',
-    theadHtml: '<tr><th>Vehicle</th><th>Vehicle Type</th><th>Permit Type</th><th>Payment Date</th><th>Expiry Date</th><th style="text-align:right">Amount (TZS)</th><th>Status</th></tr>',
+    theadHtml: '<tr><th>S/No</th><th>Vehicle</th><th>Vehicle Type</th><th>Permit Type</th><th>Payment Date</th><th>Expiry Date</th><th style="text-align:right">Amount (TZS)</th><th>Status</th></tr>',
     tbodyHtml: rows,
-    tfootHtml: '<tr><td colspan="5" style="text-align:right">TOTAL</td><td style="text-align:right">'+fmt(totalAmt)+'</td><td></td></tr>',
+    tfootHtml: '<tr><td colspan="6" style="text-align:right">TOTAL</td><td style="text-align:right">'+fmt(totalAmt)+'</td><td></td></tr>',
     noSignatures: true
   });
 }

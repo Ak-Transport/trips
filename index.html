@@ -2408,7 +2408,7 @@ td,td *{font-size:13px!important;font-family:'Inter',sans-serif!important}
 <script>
 // AK TRANSPORT — TRIP MANAGEMENT SYSTEM — Phase 1 Foundation
 // Replace the API constant below with your deployed Apps Script URL
-const API = 'https://script.google.com/macros/s/AKfycbwsAjgE5Y91Mbu_kkqo-WB1E9HZI3Zr7RtynFJIw4hv0S_v_UF7Rra-dC76lbr152_-fA/exec';
+const API = 'https://script.google.com/macros/s/AKfycbyG0vtvjdraS96TvpybIGNP7PADAzlni_25t2y0M2HSxkaOn3IFcvdWh3Wp4Z7ZXh-xxA/exec';
 
 var CURRENT_USER=null,SETTINGS={},ROUTES=[],TRUCK_FUEL=[],PERMIT_RATES=[],TRANSPORT_RATES=[],
     RELEASES=[],TRIPS=[],PERMITS=[],RENEWAL_REQS=[],AGENT_ACCOUNTS=[],AGENT_EXPENSES=[],
@@ -2577,32 +2577,30 @@ function switchSettingsTab(n){
 async function loadAppData(){
   show_loading(true,'Loading trip data...');
   try{
-    var calls=[callAPI('getSettings'),callAPI('getReleases'),callAPI('getTrips'),callAPI('getPermits'),
-      callAPI('getDrivers'),callAPI('getVehicles'),callAPI('getUsers'),callAPI('getRoutes'),
-      callAPI('getTruckFuelConfig'),callAPI('getPermitRates'),callAPI('getTransportRates'),
-      callAPI('getAgentAccounts'),callAPI('getAgentExpenses'),callAPI('getFuelLoss'),
-      callAPI('getShortagePayments'),callAPI('getFuelRequests'),callAPI('getInvoices'),callAPI('getRenewalReqs')];
-    var r=await Promise.allSettled(calls);
-    if(r[0].status==='fulfilled')SETTINGS=r[0].value.settings||{};
-    if(r[1].status==='fulfilled')RELEASES=r[1].value.records||[];
-    if(r[2].status==='fulfilled')TRIPS=r[2].value.records||[];
-    if(r[3].status==='fulfilled')PERMITS=r[3].value.records||[];
-    if(r[4].status==='fulfilled')DRIVERS=r[4].value.records||[];
-    if(r[5].status==='fulfilled')VEHICLES=r[5].value.records||[];
-    if(r[6].status==='fulfilled')USERS=r[6].value.records||[];
-    if(r[7].status==='fulfilled')ROUTES=r[7].value.records||[];
-    if(r[8].status==='fulfilled')TRUCK_FUEL=r[8].value.records||[];
-    if(r[9].status==='fulfilled')PERMIT_RATES=r[9].value.records||[];
-    if(r[10].status==='fulfilled')TRANSPORT_RATES=r[10].value.records||[];
-    if(r[11].status==='fulfilled')AGENT_ACCOUNTS=r[11].value.records||[];
-    if(r[12].status==='fulfilled')AGENT_EXPENSES=r[12].value.records||[];
-    if(r[13].status==='fulfilled')FUEL_LOSS=r[13].value.records||[];
-    if(r[14].status==='fulfilled')SHORTAGE_PMTS=r[14].value.records||[];
-    if(r[15].status==='fulfilled')FUEL_REQUESTS=r[15].value.records||[];
-    if(r[16].status==='fulfilled')INVOICES=r[16].value.records||[];
-    if(r[17].status==='fulfilled')RENEWAL_REQS=r[17].value.records||[];
-    if(r[18] && r[18].status==='fulfilled')DEDUCTIONS=r[18].value.records||[];
-    if(r[19] && r[19].status==='fulfilled')DEDUCTION_PMTS=r[19].value.records||[];
+    var r = await callAPI('getAllData');
+    if (r && r.error) {
+      throw new Error('Backend error: ' + r.error + ' — the deployed Apps Script may not have the latest code (try redeploying a new version)');
+    }
+    SETTINGS         = r.settings || {};
+    RELEASES         = r.releases || [];
+    TRIPS            = r.trips || [];
+    PERMITS          = r.permits || [];
+    DRIVERS          = r.drivers || [];
+    VEHICLES         = r.vehicles || [];
+    USERS            = r.users || [];
+    ROUTES           = r.routes || [];
+    TRUCK_FUEL       = r.truckFuel || [];
+    PERMIT_RATES     = r.permitRates || [];
+    TRANSPORT_RATES  = r.transportRates || [];
+    AGENT_ACCOUNTS   = r.agentAccounts || [];
+    AGENT_EXPENSES   = r.agentExpenses || [];
+    FUEL_LOSS        = r.fuelLoss || [];
+    SHORTAGE_PMTS    = r.shortagePayments || [];
+    FUEL_REQUESTS    = r.fuelRequests || [];
+    INVOICES         = r.invoices || [];
+    RENEWAL_REQS     = r.renewalReqs || [];
+    DEDUCTIONS       = r.deductions || [];
+    DEDUCTION_PMTS   = r.deductionPayments || [];
     // Re-sync CURRENT_USER against the freshly-fetched USERS record, so
     // permission changes an admin makes take effect on the next refresh
     // instead of requiring the affected user to log out and back in.

@@ -168,6 +168,11 @@ td,td *{font-size:13px!important;font-family:'Inter',sans-serif!important}
     <div style="flex:1"></div>
     <div style="display:flex;align-items:center;gap:10px;background:#f5f7fa;border:1px solid #e8eaed;border-radius:24px;padding:5px 16px">
       <div class="syncbadge"><div class="dot" id="syndot"></div><span id="synlbl" style="font-size:11px;color:#888">Connecting...</span></div>
+      <div id="bgload-badge" style="display:none;align-items:center;gap:6px;font-size:11px;color:#888;margin-left:10px">
+        <div style="width:7px;height:7px;border-radius:50%;background:#0071e3;animation:bgloadpulse 1s ease-in-out infinite"></div>
+        Loading additional data...
+      </div>
+      <style>@keyframes bgloadpulse{0%,100%{opacity:1}50%{opacity:.3}}</style>
       <div style="width:1px;height:14px;background:#ddd;flex-shrink:0"></div>
       <button onclick="refreshAll()" style="background:none;border:none;cursor:pointer;font-size:11px;font-weight:600;color:#555;padding:0">&#8635; Refresh</button>
       <div style="width:1px;height:14px;background:#ddd;flex-shrink:0"></div>
@@ -2408,7 +2413,7 @@ td,td *{font-size:13px!important;font-family:'Inter',sans-serif!important}
 <script>
 // AK TRANSPORT — TRIP MANAGEMENT SYSTEM — Phase 1 Foundation
 // Replace the API constant below with your deployed Apps Script URL
-const API = 'https://script.google.com/macros/s/AKfycbxJtyaK2T3uXIED7WcuEIpRaHsRfU23pnk5Ha1HMIlDjbeLVtGjvYicXmB-SvPwllZuiw/exec';
+const API = 'https://script.google.com/macros/s/AKfycbw4vUzqxuTDVCddy7yMnuwocqxh0ThjqIpVYpALh77C-a_wgg0IlQW8WlIesdGQfvDhNw/exec';
 
 var CURRENT_USER=null,SETTINGS={},ROUTES=[],TRUCK_FUEL=[],PERMIT_RATES=[],TRANSPORT_RATES=[],
     RELEASES=[],TRIPS=[],PERMITS=[],RENEWAL_REQS=[],AGENT_ACCOUNTS=[],AGENT_EXPENSES=[],
@@ -2422,7 +2427,7 @@ function setSyncStatus(s){var d=document.getElementById('syndot'),l=document.get
 // ── API ──
 async function callAPI(action,data){
   data=data||{};setSyncStatus('sy');
-  var ctrl=new AbortController(),timer=setTimeout(function(){ctrl.abort();},45000);
+  var ctrl=new AbortController(),timer=setTimeout(function(){ctrl.abort();},90000);
   try{
     var res=await fetch(API,{method:'POST',body:JSON.stringify(Object.assign({action:action},data)),headers:{'Content-Type':'text/plain'},signal:ctrl.signal});
     clearTimeout(timer);var text=await res.text();var json;
@@ -2577,30 +2582,21 @@ function switchSettingsTab(n){
 async function loadAppData(){
   show_loading(true,'Loading trip data...');
   try{
-    var r = await callAPI('getAllData');
-    if (r && r.error) {
-      throw new Error('Backend error: ' + r.error + ' — the deployed Apps Script may not have the latest code (try redeploying a new version)');
-    }
-    SETTINGS         = r.settings || {};
-    RELEASES         = r.releases || [];
-    TRIPS            = r.trips || [];
-    PERMITS          = r.permits || [];
-    DRIVERS          = r.drivers || [];
-    VEHICLES         = r.vehicles || [];
-    USERS            = r.users || [];
-    ROUTES           = r.routes || [];
-    TRUCK_FUEL       = r.truckFuel || [];
-    PERMIT_RATES     = r.permitRates || [];
-    TRANSPORT_RATES  = r.transportRates || [];
-    AGENT_ACCOUNTS   = r.agentAccounts || [];
-    AGENT_EXPENSES   = r.agentExpenses || [];
-    FUEL_LOSS        = r.fuelLoss || [];
-    SHORTAGE_PMTS    = r.shortagePayments || [];
-    FUEL_REQUESTS    = r.fuelRequests || [];
-    INVOICES         = r.invoices || [];
-    RENEWAL_REQS     = r.renewalReqs || [];
-    DEDUCTIONS       = r.deductions || [];
-    DEDUCTION_PMTS   = r.deductionPayments || [];
+    // TIER 1 — only what's needed to show the app and its first screen.
+    // Kept small on purpose: fewer blocking calls = faster to usable.
+    var criticalCalls=[callAPI('getSettings'),callAPI('getReleases'),callAPI('getTrips'),
+      callAPI('getDrivers'),callAPI('getVehicles'),callAPI('getUsers'),callAPI('getPermits')];
+    var rs=await Promise.allSettled(criticalCalls);
+    SETTINGS  = rs[0].status==='fulfilled' ? (rs[0].value.settings||{}) : {};
+    RELEASES  = rs[1].status==='fulfilled' ? (rs[1].value.records||[]) : [];
+    TRIPS     = rs[2].status==='fulfilled' ? (rs[2].value.records||[]) : [];
+    DRIVERS   = rs[3].status==='fulfilled' ? (rs[3].value.records||[]) : [];
+    VEHICLES  = rs[4].status==='fulfilled' ? (rs[4].value.records||[]) : [];
+    USERS     = rs[5].status==='fulfilled' ? (rs[5].value.records||[]) : [];
+    PERMITS   = rs[6].status==='fulfilled' ? (rs[6].value.records||[]) : [];
+    var _criticalNames = ['Settings','Releases','Trips','Drivers','Vehicles','Users','Permits'];
+    var _failedNames = rs.map(function(x,i){ return x.status==='rejected' ? _criticalNames[i]+' ('+(x.reason&&x.reason.message||'unknown error')+')' : null; }).filter(Boolean);
+    if (_failedNames.length) toast('Failed to load: '+_failedNames.join(', '),'er');
     // Re-sync CURRENT_USER against the freshly-fetched USERS record, so
     // permission changes an admin makes take effect on the next refresh
     // instead of requiring the affected user to log out and back in.
@@ -2627,11 +2623,58 @@ async function loadAppData(){
         switchView('releases');
       }
     }, 400);
-    // Load deductions separately so they can't block main load
-    callAPI('getDeductions').then(function(r){if(r&&r.records)DEDUCTIONS=r.records;}).catch(function(){});
-    callAPI('getDeductionPayments').then(function(r){if(r&&r.records)DEDUCTION_PMTS=r.records;}).catch(function(){});
   }catch(e){toast('Error: '+e.message,'er');}
   finally{show_loading(false);}
+
+  // TIER 2 — everything else, loaded in the background AFTER the app is
+  // already usable. The user isn't waiting on any of this; once it
+  // arrives, badges and whatever view is currently open just refresh
+  // quietly to reflect it.
+  try{
+    var bgBadge = document.getElementById('bgload-badge');
+    if (bgBadge) bgBadge.style.display = 'flex';
+    var secondaryCalls=[callAPI('getRoutes'),callAPI('getTruckFuelConfig'),
+      callAPI('getPermitRates'),callAPI('getTransportRates'),callAPI('getAgentAccounts'),
+      callAPI('getAgentExpenses'),callAPI('getFuelLoss'),callAPI('getShortagePayments'),
+      callAPI('getFuelRequests'),callAPI('getInvoices'),callAPI('getRenewalReqs'),
+      callAPI('getDeductions'),callAPI('getDeductionPayments')];
+    var rs2=await Promise.allSettled(secondaryCalls);
+    ROUTES           = rs2[0].status==='fulfilled'  ? (rs2[0].value.records||[]) : [];
+    TRUCK_FUEL       = rs2[1].status==='fulfilled'  ? (rs2[1].value.records||[]) : [];
+    PERMIT_RATES     = rs2[2].status==='fulfilled'  ? (rs2[2].value.records||[]) : [];
+    TRANSPORT_RATES  = rs2[3].status==='fulfilled'  ? (rs2[3].value.records||[]) : [];
+    AGENT_ACCOUNTS   = rs2[4].status==='fulfilled'  ? (rs2[4].value.records||[]) : [];
+    AGENT_EXPENSES   = rs2[5].status==='fulfilled'  ? (rs2[5].value.records||[]) : [];
+    FUEL_LOSS        = rs2[6].status==='fulfilled'  ? (rs2[6].value.records||[]) : [];
+    SHORTAGE_PMTS    = rs2[7].status==='fulfilled'  ? (rs2[7].value.records||[]) : [];
+    FUEL_REQUESTS    = rs2[8].status==='fulfilled'  ? (rs2[8].value.records||[]) : [];
+    INVOICES         = rs2[9].status==='fulfilled'  ? (rs2[9].value.records||[]) : [];
+    RENEWAL_REQS     = rs2[10].status==='fulfilled' ? (rs2[10].value.records||[]) : [];
+    DEDUCTIONS       = rs2[11].status==='fulfilled' ? (rs2[11].value.records||[]) : [];
+    DEDUCTION_PMTS   = rs2[12].status==='fulfilled' ? (rs2[12].value.records||[]) : [];
+    var _secondaryNames = ['Routes','Truck Fuel Config','Permit Rates','Transport Rates',
+      'Agent Accounts','Agent Expenses','Fuel Loss','Shortage Payments','Fuel Requests',
+      'Invoices','Renewal Requests','Deductions','Deduction Payments'];
+    var _failedSecondary = rs2.map(function(x,i){ return x.status==='rejected' ? _secondaryNames[i] : null; }).filter(Boolean);
+    if (_failedSecondary.length) toast('Failed to load: '+_failedSecondary.join(', ')+' — try Refresh','er');
+    updateBadges();
+    if (bgBadge) bgBadge.style.display = 'none';
+    // Quietly refresh whatever view is currently open so it picks up
+    // this data (e.g. Permits/Fuel Requests) - but only if it's safe to:
+    // skip it if the user has a modal/form open right now (don't
+    // interrupt whatever they're doing), and preserve scroll position
+    // either way so the page doesn't visibly jump.
+    var modalOpen = document.querySelector('.overlay:not(.hidden)');
+    if (!modalOpen) {
+      var _scrollY = window.scrollY;
+      try { switchView(currentView); } catch(e){}
+      window.scrollTo(0, _scrollY);
+    }
+  }catch(e){
+    var bgBadge2 = document.getElementById('bgload-badge');
+    if (bgBadge2) bgBadge2.style.display = 'none';
+    /* secondary data is non-critical - fail silently otherwise */
+  }
   // Post-load extras
   try{ checkPermitAlerts(); }catch(e){}
   try{ var ae=await callAPI('getAddExpenses'); if(ae&&ae.records)ADD_EXPENSES=ae.records; }catch(e){}

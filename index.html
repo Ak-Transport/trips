@@ -2408,7 +2408,7 @@ td,td *{font-size:13px!important;font-family:'Inter',sans-serif!important}
 <script>
 // AK TRANSPORT — TRIP MANAGEMENT SYSTEM — Phase 1 Foundation
 // Replace the API constant below with your deployed Apps Script URL
-const API = 'https://script.google.com/macros/s/AKfycbzmsOhmrJWVeiE8P-K_A5LKwRxeOEd-KmtFly3zhiKaSfXeinbuRcGwBHMPl1yO7I5D1A/exec';
+const API = 'https://script.google.com/macros/s/AKfycbwsAjgE5Y91Mbu_kkqo-WB1E9HZI3Zr7RtynFJIw4hv0S_v_UF7Rra-dC76lbr152_-fA/exec';
 
 var CURRENT_USER=null,SETTINGS={},ROUTES=[],TRUCK_FUEL=[],PERMIT_RATES=[],TRANSPORT_RATES=[],
     RELEASES=[],TRIPS=[],PERMITS=[],RENEWAL_REQS=[],AGENT_ACCOUNTS=[],AGENT_EXPENSES=[],
@@ -4508,12 +4508,12 @@ function _permitCellInfo(vehiclePlate, permitTypeName) {
     return (p.vehicle||'').toUpperCase() === vehiclePlate.toUpperCase() && p.permitType === permitTypeName;
   });
   var latest = records.sort(function(a,b){ return new Date(b.paymentDate||0)-new Date(a.paymentDate||0); })[0];
-  if (!latest) return {html:'<span style="color:#374151;font-weight:700;font-size:10px">Not Rec.</span>', amount:0, status:'notrec'};
+  if (!latest || !latest.paymentDate) return {html:'<span style="color:#374151;font-weight:700;font-size:10px">Not Rec.</span>', amount:0, status:'notrec'};
   var exp = new Date(latest.expiryDate||''); exp.setHours(0,0,0,0);
   var today_dt = new Date(); today_dt.setHours(0,0,0,0);
   var daysLeft = Math.ceil((exp-today_dt)/86400000);
   var amt = parseFloat(latest.amountPaid||0);
-  if (isNaN(daysLeft)) return {html:'<span style="color:#b91c1c;font-weight:700;font-size:10px">Not Rec.</span>', amount:0, status:'notrec'};
+  if (isNaN(daysLeft)) return {html:'<span style="color:#374151;font-weight:700;font-size:10px">Not Rec.</span>', amount:0, status:'notrec'};
   if (daysLeft < 0) {
     return {html: fmt(amt) + '<div style="font-size:9px;color:#b91c1c">expired</div>', amount: amt, status:'expired'};
   } else if (daysLeft <= 30) {
@@ -5188,7 +5188,10 @@ window.renderPermits = function() {
       if (renewal.status === 'PENDING')  return {class:'sAM', icon:'⏳', label:'Waiting for Approval', days:null, blocked:false, renewalPending:true};
       if (renewal.status === 'APPROVED') return {class:'sBL', icon:'✅', label:'Approved — Upload Doc', days:null, blocked:false, renewalApproved:true};
     }
-    if (!permit) return {class:'sGY', icon:'⚫', label:'Not Recorded', days:null, blocked:true};
+    // A record with no Payment Date isn't meaningfully "recorded" at
+    // all - treat it the same as if no row existed, rather than showing
+    // it as a genuine permit with a missing document/expiry.
+    if (!permit || !permit.paymentDate) return {class:'sGY', icon:'⚫', label:'Not Recorded', days:null, blocked:true};
     var exp = new Date(permit.expiryDate||''); exp.setHours(0,0,0,0);
     var daysLeft = Math.ceil((exp - today_dt) / 86400000);
     if (isNaN(exp.getTime())) return {class:'sAM', icon:'⚠️', label:'No Expiry Date', days:null, blocked:false, warning:true};
@@ -9456,7 +9459,10 @@ window.renderPermits = function() {
       if (renewal.status === 'PENDING')  return {class:'sAM', icon:'⏳', label:'Waiting for Approval', days:null, blocked:false, renewalPending:true};
       if (renewal.status === 'APPROVED') return {class:'sBL', icon:'✅', label:'Approved — Upload Doc', days:null, blocked:false, renewalApproved:true};
     }
-    if (!permit) return {class:'sGY', icon:'⚫', label:'Not Recorded', days:null, blocked:true};
+    // A record with no Payment Date isn't meaningfully "recorded" at
+    // all - treat it the same as if no row existed, rather than showing
+    // it as a genuine permit with a missing document/expiry.
+    if (!permit || !permit.paymentDate) return {class:'sGY', icon:'⚫', label:'Not Recorded', days:null, blocked:true};
     var exp = new Date(permit.expiryDate||''); exp.setHours(0,0,0,0);
     var daysLeft = Math.ceil((exp - today_dt) / 86400000);
     if (isNaN(exp.getTime())) return {class:'sAM', icon:'⚠️', label:'No Expiry Date', days:null, blocked:false, warning:true};
@@ -16325,7 +16331,7 @@ function renderBudget() {
             && (p.permitType||'').toLowerCase().includes(type.toLowerCase());
       });
       var latest = records.sort(function(a,b){return new Date(b.paymentDate||0)-new Date(a.paymentDate||0);})[0];
-      if(!latest) return {icon:circle('#6b7280')+'<span style="'+lblStyle+';color:#374151">not rec.</span>',bg:'#f3f4f6',tip:'Not Recorded — no '+type+' permit for '+vehicle};
+      if(!latest || !latest.paymentDate) return {icon:circle('#6b7280')+'<span style="'+lblStyle+';color:#374151">not rec.</span>',bg:'#f3f4f6',tip:'Not Recorded — no '+type+' permit for '+vehicle};
       var exp = new Date(latest.expiryDate||''); exp.setHours(0,0,0,0);
       var daysLeft = Math.ceil((exp-today_dt)/86400000);
       if(exp < today_dt)  return {icon:circle('#ef4444')+'<span style="'+lblStyle+';color:#b91c1c">expired</span>',bg:'#fef2f2',tip:'Expired — '+fmtDate(latest.expiryDate)};
@@ -16389,7 +16395,7 @@ function renderBudget() {
       }
       var records = PERMITS.filter(function(p){return(p.vehicle||'').toUpperCase()===vehicle.toUpperCase()&&p.permitType===type;});
       var latest  = records.sort(function(a,b){return new Date(b.paymentDate||0)-new Date(a.paymentDate||0);})[0];
-      if(!latest) return {icon:circle('#6b7280')+'<span style="'+lblStyle+';color:#374151">not rec.</span>',bg:'#f3f4f6',tip:'Not Recorded — no permit entry found'};
+      if(!latest || !latest.paymentDate) return {icon:circle('#6b7280')+'<span style="'+lblStyle+';color:#374151">not rec.</span>',bg:'#f3f4f6',tip:'Not Recorded — no permit entry found'};
       var exp = new Date(latest.expiryDate||''); exp.setHours(0,0,0,0);
       var daysLeft = Math.ceil((exp-today_dt)/86400000);
       if(exp < today_dt)  return {icon:circle('#ef4444')+'<span style="'+lblStyle+';color:#b91c1c">expired</span>',bg:'#fef2f2',tip:'Expired — '+fmtDate(latest.expiryDate)};

@@ -2585,7 +2585,8 @@ async function loadAppData(){
     // TIER 1 — only what's needed to show the app and its first screen.
     // Kept small on purpose: fewer blocking calls = faster to usable.
     var criticalCalls=[callAPI('getSettings'),callAPI('getReleases'),callAPI('getTrips'),
-      callAPI('getDrivers'),callAPI('getVehicles'),callAPI('getUsers'),callAPI('getPermits')];
+      callAPI('getDrivers'),callAPI('getVehicles'),callAPI('getUsers'),callAPI('getPermits'),
+      callAPI('getFuelRequests')];
     var rs=await Promise.allSettled(criticalCalls);
     SETTINGS  = rs[0].status==='fulfilled' ? (rs[0].value.settings||{}) : {};
     RELEASES  = rs[1].status==='fulfilled' ? (rs[1].value.records||[]) : [];
@@ -2594,7 +2595,8 @@ async function loadAppData(){
     VEHICLES  = rs[4].status==='fulfilled' ? (rs[4].value.records||[]) : [];
     USERS     = rs[5].status==='fulfilled' ? (rs[5].value.records||[]) : [];
     PERMITS   = rs[6].status==='fulfilled' ? (rs[6].value.records||[]) : [];
-    var _criticalNames = ['Settings','Releases','Trips','Drivers','Vehicles','Users','Permits'];
+    FUEL_REQUESTS = rs[7].status==='fulfilled' ? (rs[7].value.records||[]) : [];
+    var _criticalNames = ['Settings','Releases','Trips','Drivers','Vehicles','Users','Permits','Fuel Requests'];
     var _failedNames = rs.map(function(x,i){ return x.status==='rejected' ? _criticalNames[i]+' ('+(x.reason&&x.reason.message||'unknown error')+')' : null; }).filter(Boolean);
     if (_failedNames.length) toast('Failed to load: '+_failedNames.join(', '),'er');
     // Re-sync CURRENT_USER against the freshly-fetched USERS record, so
@@ -2636,7 +2638,7 @@ async function loadAppData(){
     var secondaryCalls=[callAPI('getRoutes'),callAPI('getTruckFuelConfig'),
       callAPI('getPermitRates'),callAPI('getTransportRates'),callAPI('getAgentAccounts'),
       callAPI('getAgentExpenses'),callAPI('getFuelLoss'),callAPI('getShortagePayments'),
-      callAPI('getFuelRequests'),callAPI('getInvoices'),callAPI('getRenewalReqs'),
+      callAPI('getInvoices'),callAPI('getRenewalReqs'),
       callAPI('getDeductions'),callAPI('getDeductionPayments')];
     var rs2=await Promise.allSettled(secondaryCalls);
     ROUTES           = rs2[0].status==='fulfilled'  ? (rs2[0].value.records||[]) : [];
@@ -2647,13 +2649,12 @@ async function loadAppData(){
     AGENT_EXPENSES   = rs2[5].status==='fulfilled'  ? (rs2[5].value.records||[]) : [];
     FUEL_LOSS        = rs2[6].status==='fulfilled'  ? (rs2[6].value.records||[]) : [];
     SHORTAGE_PMTS    = rs2[7].status==='fulfilled'  ? (rs2[7].value.records||[]) : [];
-    FUEL_REQUESTS    = rs2[8].status==='fulfilled'  ? (rs2[8].value.records||[]) : [];
-    INVOICES         = rs2[9].status==='fulfilled'  ? (rs2[9].value.records||[]) : [];
-    RENEWAL_REQS     = rs2[10].status==='fulfilled' ? (rs2[10].value.records||[]) : [];
-    DEDUCTIONS       = rs2[11].status==='fulfilled' ? (rs2[11].value.records||[]) : [];
-    DEDUCTION_PMTS   = rs2[12].status==='fulfilled' ? (rs2[12].value.records||[]) : [];
+    INVOICES         = rs2[8].status==='fulfilled'  ? (rs2[8].value.records||[]) : [];
+    RENEWAL_REQS     = rs2[9].status==='fulfilled'  ? (rs2[9].value.records||[]) : [];
+    DEDUCTIONS       = rs2[10].status==='fulfilled' ? (rs2[10].value.records||[]) : [];
+    DEDUCTION_PMTS   = rs2[11].status==='fulfilled' ? (rs2[11].value.records||[]) : [];
     var _secondaryNames = ['Routes','Truck Fuel Config','Permit Rates','Transport Rates',
-      'Agent Accounts','Agent Expenses','Fuel Loss','Shortage Payments','Fuel Requests',
+      'Agent Accounts','Agent Expenses','Fuel Loss','Shortage Payments',
       'Invoices','Renewal Requests','Deductions','Deduction Payments'];
     var _failedSecondary = rs2.map(function(x,i){ return x.status==='rejected' ? _secondaryNames[i] : null; }).filter(Boolean);
     if (_failedSecondary.length) toast('Failed to load: '+_failedSecondary.join(', ')+' — try Refresh','er');

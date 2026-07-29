@@ -2037,6 +2037,7 @@ td,td *{font-size:13px!important;font-family:'Inter',sans-serif!important}
           <button class="stab-btn" onclick="switchSettingsTab('fuel')">&#9981; Truck Fuel Config</button>
           <button class="stab-btn" onclick="switchSettingsTab('permitrates')">&#128737; Permit Rates</button>
           <button class="stab-btn" onclick="switchSettingsTab('transport')">&#128176; Transport Rates</button>
+          <button class="stab-btn" onclick="switchSettingsTab('openingbal')">&#128188; Driver Opening Balances</button>
         </div>
         <div class="stab-panel active" id="stab-general">
           <div class="scard"><div class="scard-title">&#127970; Company Details</div>
@@ -2093,6 +2094,12 @@ td,td *{font-size:13px!important;font-family:'Inter',sans-serif!important}
           <div class="scard"><div class="scard-title">&#128176; Transport Rates (USD/m&#179;) — Admin Only <button class="btn bg" style="font-size:11px;padding:4px 12px;margin-left:auto" onclick="addTransportRateRow()">+ Add Rate</button></div>
             <p style="font-size:12px;color:var(--t2);margin-bottom:14px">Rate varies by customer and destination. Used for invoice calculations.</p>
             <table class="rate-matrix"><thead><tr><th>Customer</th><th>Destination</th><th>Rate (USD/m&#179;)</th><th></th></tr></thead><tbody id="transport-rates-tbody"></tbody></table>
+          </div>
+        </div>
+        <div class="stab-panel" id="stab-openingbal">
+          <div class="scard"><div class="scard-title">&#128188; Driver Opening Balances (Shortages) <button class="btn bg" style="font-size:11px;padding:4px 12px;margin-left:auto" onclick="addOpeningBalanceRow()">+ Add Driver</button></div>
+            <p style="font-size:12px;color:var(--t2);margin-bottom:14px">A starting shortage balance for a driver from before this system tracked it — added on top of their trip-based shortages when calculating their running total.</p>
+            <table class="rate-matrix"><thead><tr><th>Driver</th><th>Opening Balance (TZS)</th><th>As Of Date</th><th></th></tr></thead><tbody id="opening-balances-tbody"></tbody></table>
           </div>
         </div>
       </div>
@@ -2413,11 +2420,12 @@ td,td *{font-size:13px!important;font-family:'Inter',sans-serif!important}
 <script>
 // AK TRANSPORT — TRIP MANAGEMENT SYSTEM — Phase 1 Foundation
 // Replace the API constant below with your deployed Apps Script URL
-const API = 'https://script.google.com/macros/s/AKfycbw4vUzqxuTDVCddy7yMnuwocqxh0ThjqIpVYpALh77C-a_wgg0IlQW8WlIesdGQfvDhNw/exec';
+const API = 'https://script.google.com/macros/s/AKfycbzzj5MNvWCaMcEnyQJgxHK_Du7k4g17dE2gsmJLltOOwO1nNOS0JMT-SR3WBnFcMNKAQw/exec';
 
 var CURRENT_USER=null,SETTINGS={},ROUTES=[],TRUCK_FUEL=[],PERMIT_RATES=[],TRANSPORT_RATES=[],
     RELEASES=[],TRIPS=[],PERMITS=[],RENEWAL_REQS=[],AGENT_ACCOUNTS=[],AGENT_EXPENSES=[],
     FUEL_LOSS=[],SHORTAGE_PMTS=[],ADD_EXPENSES=[],DRV_EXPENSES=[],FUEL_REQUESTS=[],
+    DRIVER_OPENING_BALANCES=[],
     DEDUCTIONS=[],DEDUCTION_PMTS=[],
     INVOICES=[],DRIVERS=[],VEHICLES=[],USERS=[],currentView='dashboard',editingId=null;
 
@@ -2584,9 +2592,14 @@ async function loadAppData(){
   try{
     // TIER 1 — only what's needed to show the app and its first screen.
     // Kept small on purpose: fewer blocking calls = faster to usable.
+    // Settings-page reference data and Driver Ledger data are each
+    // combined into ONE backend call (getSettingsPageBundle,
+    // getDriverLedgerBundle) instead of 9 separate round-trips - same
+    // proven pattern as getWorkshopBundle, actually cutting the number
+    // of real network requests instead of just moving them between tiers.
     var criticalCalls=[callAPI('getSettings'),callAPI('getReleases'),callAPI('getTrips'),
       callAPI('getDrivers'),callAPI('getVehicles'),callAPI('getUsers'),callAPI('getPermits'),
-      callAPI('getFuelRequests')];
+      callAPI('getFuelRequests'),callAPI('getSettingsPageBundle'),callAPI('getDriverLedgerBundle')];
     var rs=await Promise.allSettled(criticalCalls);
     SETTINGS  = rs[0].status==='fulfilled' ? (rs[0].value.settings||{}) : {};
     RELEASES  = rs[1].status==='fulfilled' ? (rs[1].value.records||[]) : [];
@@ -2596,7 +2609,21 @@ async function loadAppData(){
     USERS     = rs[5].status==='fulfilled' ? (rs[5].value.records||[]) : [];
     PERMITS   = rs[6].status==='fulfilled' ? (rs[6].value.records||[]) : [];
     FUEL_REQUESTS = rs[7].status==='fulfilled' ? (rs[7].value.records||[]) : [];
-    var _criticalNames = ['Settings','Releases','Trips','Drivers','Vehicles','Users','Permits','Fuel Requests'];
+    if (rs[8].status==='fulfilled') {
+      ROUTES = rs[8].value.routes||[];
+      TRUCK_FUEL = rs[8].value.truckFuel||[];
+      PERMIT_RATES = rs[8].value.permitRates||[];
+      TRANSPORT_RATES = rs[8].value.transportRates||[];
+      DRIVER_OPENING_BALANCES = rs[8].value.openingBalances||[];
+    }
+    if (rs[9].status==='fulfilled') {
+      FUEL_LOSS = rs[9].value.fuelLoss||[];
+      SHORTAGE_PMTS = rs[9].value.shortagePmts||[];
+      DEDUCTIONS = rs[9].value.deductions||[];
+      DEDUCTION_PMTS = rs[9].value.deductionPmts||[];
+    }
+    var _criticalNames = ['Settings','Releases','Trips','Drivers','Vehicles','Users','Permits','Fuel Requests',
+      'Settings Page Data','Driver Ledger Data'];
     var _failedNames = rs.map(function(x,i){ return x.status==='rejected' ? _criticalNames[i]+' ('+(x.reason&&x.reason.message||'unknown error')+')' : null; }).filter(Boolean);
     if (_failedNames.length) toast('Failed to load: '+_failedNames.join(', '),'er');
     // Re-sync CURRENT_USER against the freshly-fetched USERS record, so
@@ -2635,27 +2662,14 @@ async function loadAppData(){
   try{
     var bgBadge = document.getElementById('bgload-badge');
     if (bgBadge) bgBadge.style.display = 'flex';
-    var secondaryCalls=[callAPI('getRoutes'),callAPI('getTruckFuelConfig'),
-      callAPI('getPermitRates'),callAPI('getTransportRates'),callAPI('getAgentAccounts'),
-      callAPI('getAgentExpenses'),callAPI('getFuelLoss'),callAPI('getShortagePayments'),
-      callAPI('getInvoices'),callAPI('getRenewalReqs'),
-      callAPI('getDeductions'),callAPI('getDeductionPayments')];
+    var secondaryCalls=[callAPI('getAgentAccounts'),callAPI('getAgentExpenses'),
+      callAPI('getInvoices'),callAPI('getRenewalReqs')];
     var rs2=await Promise.allSettled(secondaryCalls);
-    ROUTES           = rs2[0].status==='fulfilled'  ? (rs2[0].value.records||[]) : [];
-    TRUCK_FUEL       = rs2[1].status==='fulfilled'  ? (rs2[1].value.records||[]) : [];
-    PERMIT_RATES     = rs2[2].status==='fulfilled'  ? (rs2[2].value.records||[]) : [];
-    TRANSPORT_RATES  = rs2[3].status==='fulfilled'  ? (rs2[3].value.records||[]) : [];
-    AGENT_ACCOUNTS   = rs2[4].status==='fulfilled'  ? (rs2[4].value.records||[]) : [];
-    AGENT_EXPENSES   = rs2[5].status==='fulfilled'  ? (rs2[5].value.records||[]) : [];
-    FUEL_LOSS        = rs2[6].status==='fulfilled'  ? (rs2[6].value.records||[]) : [];
-    SHORTAGE_PMTS    = rs2[7].status==='fulfilled'  ? (rs2[7].value.records||[]) : [];
-    INVOICES         = rs2[8].status==='fulfilled'  ? (rs2[8].value.records||[]) : [];
-    RENEWAL_REQS     = rs2[9].status==='fulfilled'  ? (rs2[9].value.records||[]) : [];
-    DEDUCTIONS       = rs2[10].status==='fulfilled' ? (rs2[10].value.records||[]) : [];
-    DEDUCTION_PMTS   = rs2[11].status==='fulfilled' ? (rs2[11].value.records||[]) : [];
-    var _secondaryNames = ['Routes','Truck Fuel Config','Permit Rates','Transport Rates',
-      'Agent Accounts','Agent Expenses','Fuel Loss','Shortage Payments',
-      'Invoices','Renewal Requests','Deductions','Deduction Payments'];
+    AGENT_ACCOUNTS   = rs2[0].status==='fulfilled'  ? (rs2[0].value.records||[]) : [];
+    AGENT_EXPENSES   = rs2[1].status==='fulfilled'  ? (rs2[1].value.records||[]) : [];
+    INVOICES         = rs2[2].status==='fulfilled'  ? (rs2[2].value.records||[]) : [];
+    RENEWAL_REQS     = rs2[3].status==='fulfilled'  ? (rs2[3].value.records||[]) : [];
+    var _secondaryNames = ['Agent Accounts','Agent Expenses','Invoices','Renewal Requests'];
     var _failedSecondary = rs2.map(function(x,i){ return x.status==='rejected' ? _secondaryNames[i] : null; }).filter(Boolean);
     if (_failedSecondary.length) toast('Failed to load: '+_failedSecondary.join(', ')+' — try Refresh','er');
     updateBadges();
@@ -4830,7 +4844,7 @@ function renderDashboard(){updateBadges();}
 function renderSettings(){
   ['companyName','companyAddress','companyPhone','companyEmail','fuelPrice','fuelLossRate','mileageRate','preloadingDefault','lowBalanceThreshold','expiryAlertDays'].forEach(function(f){var el=document.getElementById('set-'+f);if(el)el.value=SETTINGS[f]!==undefined?SETTINGS[f]:'';});
   ['tollTunduma','tollSakania','bondFee','gpsTracking','exchangeRate'].forEach(function(f){var el=document.getElementById('set-'+f);if(el)el.value=SETTINGS[f]||'';});
-  renderRoutesTable();renderTruckFuelTable();renderPermitRatesTable();renderTransportRatesTable();
+  renderRoutesTable();renderTruckFuelTable();renderPermitRatesTable();renderTransportRatesTable();renderOpeningBalancesTable();
 }
 function renderRoutesTable(){
   var tbody=document.getElementById('routes-tbody');if(!tbody)return;
@@ -4916,38 +4930,65 @@ function renderTransportRatesTable(){
 }
 function addTransportRateRow(){TRANSPORT_RATES.push({id:uuid(),customer:'',destination:'Ndola',rateUSD:0});renderTransportRatesTable();}
 function deleteTransportRate(id){TRANSPORT_RATES=TRANSPORT_RATES.filter(function(r){return r.id!==id;});renderTransportRatesTable();}
+function renderOpeningBalancesTable(){
+  var tbody=document.getElementById('opening-balances-tbody');if(!tbody)return;
+  tbody.innerHTML=DRIVER_OPENING_BALANCES.map(function(r,i){
+    return '<tr><td>'+_atSearchableField('ob-driver-'+i,'Search driver...',DRIVERS.map(function(d){return d.name||'';}).filter(Boolean),null)+'</td>'
+      +'<td><input type="number" min="0" value="'+(r.openingBalanceTZS||'')+'" id="ob-amt-'+i+'" style="width:140px" placeholder="0"></td>'
+      +'<td><input type="date" value="'+(r.asOfDate||'')+'" id="ob-date-'+i+'" style="width:150px"></td>'
+      +'<td><button onclick="deleteOpeningBalanceRow(\''+r.id+'\')" style="background:none;border:none;color:#b91c1c;cursor:pointer;font-size:14px">✕</button></td></tr>';
+  }).join('');
+  DRIVER_OPENING_BALANCES.forEach(function(r,i){
+    var el=document.getElementById('ob-driver-'+i); if(el) el.value = r.driver||'';
+  });
+}
+function addOpeningBalanceRow(){DRIVER_OPENING_BALANCES.push({id:uuid(),driver:'',openingBalanceTZS:0,asOfDate:today()});renderOpeningBalancesTable();}
+function deleteOpeningBalanceRow(id){DRIVER_OPENING_BALANCES=DRIVER_OPENING_BALANCES.filter(function(r){return r.id!==id;});renderOpeningBalancesTable();}
 async function saveAllSettings(){
   var btn=document.querySelector('[onclick="saveAllSettings()"]');if(btn){btn.disabled=true;btn.textContent='Saving...';}
   try{
     var record={};
     ['companyName','companyAddress','companyPhone','companyEmail','fuelPrice','fuelLossRate','mileageRate','preloadingDefault','lowBalanceThreshold','expiryAlertDays','tollTunduma','tollSakania','bondFee','gpsTracking','exchangeRate'].forEach(function(f){var el=document.getElementById('set-'+f);if(el)record[f]=el.value;});
-    await callAPI('saveSettings',{record:record});SETTINGS=Object.assign(SETTINGS,record);
+
     var routes=ROUTES.map(function(r,i){var destEl=document.getElementById('rt-dest-'+i);var dest=destEl?destEl.value:r.destination;var bm={Ndola:'Tunduma',Lusaka:'Tunduma',Solwezi:'Tunduma',Lubumbashi:'Sakania'};return Object.assign({},r,{name:(document.getElementById('rt-name-'+i)||{}).value||r.name,destination:dest,border:bm[dest]||r.border,distanceKM:parseFloat((document.getElementById('rt-dist-'+i)||{}).value||r.distanceKM)||0,mileageAmount:parseFloat((document.getElementById('rt-mileage-'+i)||{}).value||r.mileageAmount)||0,fuelReducLtrs:parseFloat((document.getElementById('rt-reduc-'+i)||{}).value||r.fuelReducLtrs)||0});});
-    var routeErrors = [];
-    for(var i=0;i<routes.length;i++){
-      // A brand-new route (added via "+ Add Route" this session) has
-      // never been saved before, so it must go through addRoute, not
-      // updateRoute — the backend's updateRoute fails with "Record not
-      // found" for an id it's never seen, and that failure used to be
-      // silently ignored here, meaning a new route could look saved on
-      // screen while never actually reaching the sheet at all.
-      var isNew = routes[i]._isNew;
-      delete routes[i]._isNew;
-      var res = isNew
-        ? await callAPI('addRoute', {record: routes[i]})
-        : await callAPI('updateRoute', {record: routes[i]});
-      if (res && res.error) { routeErrors.push((routes[i].destination||'route '+(i+1)) + ': ' + res.error); continue; }
-      ROUTES[i]=routes[i];
-    }
-    if (routeErrors.length) throw new Error('Route(s) failed to save — ' + routeErrors.join('; '));
     var horses=VEHICLES.filter(function(v){return!(v.vehicleType||'').toLowerCase().includes('trailer');});
     var tfRecords=horses.map(function(v){var plate=v.plate||v.code||'';var el=document.getElementById('tf-'+plate);var stageEl=document.getElementById('tfs-'+plate);var existing=TRUCK_FUEL.find(function(x){return(x.truck||'').toUpperCase()===plate.toUpperCase();});return{id:existing?existing.id:uuid(),truck:plate,baseFuel:parseFloat(el?el.value:0)||0,fuelStage:stageEl?stageEl.value:'Split'};}).filter(function(r){return r.baseFuel>0;});
-    if(tfRecords.length){await callAPI('saveTruckFuelConfig',{records:tfRecords});TRUCK_FUEL=tfRecords;}
     var defaultRates=[{permitType:'COMESA',appliesTo:'Horse'},{permitType:'COMESA',appliesTo:'Trailer'},{permitType:'Transit Permit',appliesTo:'Horse'},{permitType:'Transit Permit',appliesTo:'Trailer'},{permitType:'Carbon Tax',appliesTo:'Horse'},{permitType:'ZABS',appliesTo:'Trailer'}];
     var prRecords=defaultRates.map(function(d){var key='pr-'+d.permitType.replace(/\s/g,'')+'-'+d.appliesTo;var el=document.getElementById(key);var existing=PERMIT_RATES.find(function(r){return r.permitType===d.permitType&&r.appliesTo===d.appliesTo;});return{id:existing?existing.id:uuid(),permitType:d.permitType,appliesTo:d.appliesTo,rate:parseFloat(el?el.value:0)||0};}).filter(function(r){return r.rate>0;});
-    if(prRecords.length){await callAPI('savePermitRates',{records:prRecords});PERMIT_RATES=prRecords;}
     var trRecords=TRANSPORT_RATES.map(function(r,i){return Object.assign({},r,{customer:((document.getElementById('tr-cust-'+i)||{}).value||r.customer).toUpperCase(),destination:(document.getElementById('tr-dest-'+i)||{}).value||r.destination,rateUSD:parseFloat((document.getElementById('tr-rate-'+i)||{}).value||r.rateUSD)||0});}).filter(function(r){return r.customer&&r.rateUSD>0;});
-    if(trRecords.length){await callAPI('saveTransportRates',{records:trRecords});TRANSPORT_RATES=trRecords;}
+    var obRecords=DRIVER_OPENING_BALANCES.map(function(r,i){return Object.assign({},r,{driver:(document.getElementById('ob-driver-'+i)||{}).value||r.driver,openingBalanceTZS:parseFloat((document.getElementById('ob-amt-'+i)||{}).value||r.openingBalanceTZS)||0,asOfDate:(document.getElementById('ob-date-'+i)||{}).value||r.asOfDate});}).filter(function(r){return r.driver&&r.openingBalanceTZS>0;});
+
+    var jobs = [];
+    var jobLabels = [];
+    jobs.push(callAPI('saveSettings',{record:record}));     jobLabels.push('settings');
+    routes.forEach(function(r, i){
+      var isNew = r._isNew; delete r._isNew;
+      jobs.push(callAPI(isNew?'addRoute':'updateRoute', {record:r})); jobLabels.push('route:'+i);
+    });
+    if(tfRecords.length){ jobs.push(callAPI('saveTruckFuelConfig',{records:tfRecords})); jobLabels.push('truckfuel'); }
+    if(prRecords.length){ jobs.push(callAPI('savePermitRates',{records:prRecords}));     jobLabels.push('permitrates'); }
+    if(trRecords.length){ jobs.push(callAPI('saveTransportRates',{records:trRecords}));  jobLabels.push('transportrates'); }
+    jobs.push(callAPI('saveDriverOpeningBalances',{records:obRecords})); jobLabels.push('openingbal');
+
+    var results = await Promise.allSettled(jobs);
+
+    var routeErrors = [];
+    results.forEach(function(res, idx){
+      var label = jobLabels[idx];
+      var ok = res.status==='fulfilled' && !(res.value && res.value.error);
+      if (label === 'settings' && ok) { SETTINGS = Object.assign(SETTINGS, record); }
+      else if (label.indexOf('route:')===0) {
+        var ri = parseInt(label.split(':')[1], 10);
+        if (ok) { ROUTES[ri] = routes[ri]; }
+        else { routeErrors.push((routes[ri].destination||'route '+(ri+1)) + ': ' + (res.value&&res.value.error || (res.reason&&res.reason.message) || 'failed')); }
+      }
+      else if (label === 'truckfuel' && ok) { TRUCK_FUEL = tfRecords; }
+      else if (label === 'permitrates' && ok) { PERMIT_RATES = prRecords; }
+      else if (label === 'transportrates' && ok) { TRANSPORT_RATES = trRecords; }
+      else if (label === 'openingbal' && ok) { DRIVER_OPENING_BALANCES = obRecords; }
+    });
+    if (routeErrors.length) throw new Error('Route(s) failed to save — ' + routeErrors.join('; '));
+
     toast('All settings saved ✓','ok');
   }catch(e){toast('Error: '+e.message,'er');}
   finally{if(btn){btn.disabled=false;btn.textContent='💾 Save All Settings';}}
@@ -7630,6 +7671,9 @@ function renderDriverSummary() {
         && !FUEL_LOSS.some(function(f){return f.tripId===t.id||f.tripNo===t.tripNo;});
   }).forEach(function(t){ if(t.driver) driverSet[t.driver]=true; });
   if(typeof DEDUCTIONS!=='undefined') DEDUCTIONS.forEach(function(d){ if(d.driver) driverSet[d.driver]=true; });
+  if(typeof DRIVER_OPENING_BALANCES!=='undefined') DRIVER_OPENING_BALANCES.forEach(function(o){
+    if(o.driver && parseFloat(o.openingBalanceTZS||0)>0) driverSet[o.driver]=true;
+  });
   var drivers = Object.keys(driverSet).sort();
 
   // Compute every driver's summary row once, regardless of filters —
@@ -7640,8 +7684,12 @@ function renderDriverSummary() {
       return t.driver===driver&&(t.status||'').toUpperCase()==='COMPLETED'&&parseFloat(t.excessLoss||0)>0
           &&!FUEL_LOSS.some(function(f){return f.tripId===t.id||f.tripNo===t.tripNo;});
     });
+    var openingBalRec = typeof DRIVER_OPENING_BALANCES!=='undefined'
+      ? DRIVER_OPENING_BALANCES.find(function(o){return o.driver===driver;}) : null;
+    var openingBal = openingBalRec ? parseFloat(openingBalRec.openingBalanceTZS||0) : 0;
     var shortOwed=shortRecs.reduce(function(s,f){return s+parseFloat(f.driverOwsTZS||0);},0)
-                 +autoRecs.reduce(function(s,t){return s+Math.round(parseFloat(t.excessLoss||0)*parseFloat(SETTINGS.fuelPrice||3200));},0);
+                 +autoRecs.reduce(function(s,t){return s+Math.round(parseFloat(t.excessLoss||0)*parseFloat(SETTINGS.fuelPrice||3200));},0)
+                 +openingBal;
     var shortPaid=SHORTAGE_PMTS.filter(function(p){
       return shortRecs.some(function(f){return f.id===p.fuelLossId;})&&(p.status||'').toUpperCase()==='APPROVED';
     }).reduce(function(s,p){return s+parseFloat(p.amountTZS||0);},0);
@@ -7653,7 +7701,8 @@ function renderDriverSummary() {
     var totalOwed=shortOwed+dedOwed; var totalPaid=shortPaid+dedPaid;
     var balance=Math.max(0,totalOwed-totalPaid);
     var stt=balance<=0?'PAID':totalPaid>0?'PARTIAL':'UNPAID';
-    return {driver:driver, shortOwed:shortOwed, dedOwed:dedOwed, totalOwed:totalOwed, totalPaid:totalPaid, balance:balance, status:stt};
+    return {driver:driver, shortOwed:shortOwed, dedOwed:dedOwed, totalOwed:totalOwed, totalPaid:totalPaid, balance:balance, status:stt,
+      openingBalance:openingBal, openingBalanceAsOf:openingBalRec?openingBalRec.asOfDate:''};
   });
 
   var searchInputEl = document.getElementById('dsum-search-driver');
@@ -7790,6 +7839,12 @@ function openDriverStatement(driver) {
   shortRecs.forEach(function(f){ dedRows.push({date:f.createdAt||'',ref:f.tripNo||'--',type:'Fuel Shortage',desc:'Excess: '+fmt(f.excessLoss||0)+' ltrs',amount:parseFloat(f.driverOwsTZS||0)}); });
   autoRecs.forEach(function(t){ var o=Math.round(parseFloat(t.excessLoss||0)*parseFloat(SETTINGS.fuelPrice||3200)); dedRows.push({date:t.offloadingDate||t.loadingDate||'',ref:t.tripNo||'--',type:'Fuel Shortage',desc:'Excess: '+fmt(t.excessLoss||0)+' ltrs (pending)',amount:o}); });
   dedRecs.forEach(function(d){ dedRows.push({date:d.date||'',ref:d.refNo||'--',type:d.type||'Other',desc:d.description||'--',amount:parseFloat(d.amountTZS||0)}); });
+  if(typeof DRIVER_OPENING_BALANCES!=='undefined'){
+    var obRec=DRIVER_OPENING_BALANCES.find(function(o){return o.driver===driver;});
+    if(obRec && parseFloat(obRec.openingBalanceTZS||0)>0){
+      dedRows.push({date:obRec.asOfDate||'',ref:'--',type:'Opening Balance',desc:'Carried forward as of '+fmtDate(obRec.asOfDate||''),amount:parseFloat(obRec.openingBalanceTZS||0)});
+    }
+  }
   dedRows.sort(function(a,b){return new Date(a.date||0)-new Date(b.date||0);});
   var pmtRows=[];
   SHORTAGE_PMTS.filter(function(p){return shortRecs.some(function(f){return f.id===p.fuelLossId;});}).forEach(function(p){
@@ -9135,7 +9190,7 @@ function renderDashboard(){updateBadges();}
 function renderSettings(){
   ['companyName','companyAddress','companyPhone','companyEmail','fuelPrice','fuelLossRate','mileageRate','preloadingDefault','lowBalanceThreshold','expiryAlertDays'].forEach(function(f){var el=document.getElementById('set-'+f);if(el)el.value=SETTINGS[f]!==undefined?SETTINGS[f]:'';});
   ['tollTunduma','tollSakania','bondFee','gpsTracking','exchangeRate'].forEach(function(f){var el=document.getElementById('set-'+f);if(el)el.value=SETTINGS[f]||'';});
-  renderRoutesTable();renderTruckFuelTable();renderPermitRatesTable();renderTransportRatesTable();
+  renderRoutesTable();renderTruckFuelTable();renderPermitRatesTable();renderTransportRatesTable();renderOpeningBalancesTable();
 }
 function renderRoutesTable(){
   var tbody=document.getElementById('routes-tbody');if(!tbody)return;
@@ -9221,38 +9276,65 @@ function renderTransportRatesTable(){
 }
 function addTransportRateRow(){TRANSPORT_RATES.push({id:uuid(),customer:'',destination:'Ndola',rateUSD:0});renderTransportRatesTable();}
 function deleteTransportRate(id){TRANSPORT_RATES=TRANSPORT_RATES.filter(function(r){return r.id!==id;});renderTransportRatesTable();}
+function renderOpeningBalancesTable(){
+  var tbody=document.getElementById('opening-balances-tbody');if(!tbody)return;
+  tbody.innerHTML=DRIVER_OPENING_BALANCES.map(function(r,i){
+    return '<tr><td>'+_atSearchableField('ob-driver-'+i,'Search driver...',DRIVERS.map(function(d){return d.name||'';}).filter(Boolean),null)+'</td>'
+      +'<td><input type="number" min="0" value="'+(r.openingBalanceTZS||'')+'" id="ob-amt-'+i+'" style="width:140px" placeholder="0"></td>'
+      +'<td><input type="date" value="'+(r.asOfDate||'')+'" id="ob-date-'+i+'" style="width:150px"></td>'
+      +'<td><button onclick="deleteOpeningBalanceRow(\''+r.id+'\')" style="background:none;border:none;color:#b91c1c;cursor:pointer;font-size:14px">✕</button></td></tr>';
+  }).join('');
+  DRIVER_OPENING_BALANCES.forEach(function(r,i){
+    var el=document.getElementById('ob-driver-'+i); if(el) el.value = r.driver||'';
+  });
+}
+function addOpeningBalanceRow(){DRIVER_OPENING_BALANCES.push({id:uuid(),driver:'',openingBalanceTZS:0,asOfDate:today()});renderOpeningBalancesTable();}
+function deleteOpeningBalanceRow(id){DRIVER_OPENING_BALANCES=DRIVER_OPENING_BALANCES.filter(function(r){return r.id!==id;});renderOpeningBalancesTable();}
 async function saveAllSettings(){
   var btn=document.querySelector('[onclick="saveAllSettings()"]');if(btn){btn.disabled=true;btn.textContent='Saving...';}
   try{
     var record={};
     ['companyName','companyAddress','companyPhone','companyEmail','fuelPrice','fuelLossRate','mileageRate','preloadingDefault','lowBalanceThreshold','expiryAlertDays','tollTunduma','tollSakania','bondFee','gpsTracking','exchangeRate'].forEach(function(f){var el=document.getElementById('set-'+f);if(el)record[f]=el.value;});
-    await callAPI('saveSettings',{record:record});SETTINGS=Object.assign(SETTINGS,record);
+
     var routes=ROUTES.map(function(r,i){var destEl=document.getElementById('rt-dest-'+i);var dest=destEl?destEl.value:r.destination;var bm={Ndola:'Tunduma',Lusaka:'Tunduma',Solwezi:'Tunduma',Lubumbashi:'Sakania'};return Object.assign({},r,{name:(document.getElementById('rt-name-'+i)||{}).value||r.name,destination:dest,border:bm[dest]||r.border,distanceKM:parseFloat((document.getElementById('rt-dist-'+i)||{}).value||r.distanceKM)||0,mileageAmount:parseFloat((document.getElementById('rt-mileage-'+i)||{}).value||r.mileageAmount)||0,fuelReducLtrs:parseFloat((document.getElementById('rt-reduc-'+i)||{}).value||r.fuelReducLtrs)||0});});
-    var routeErrors = [];
-    for(var i=0;i<routes.length;i++){
-      // A brand-new route (added via "+ Add Route" this session) has
-      // never been saved before, so it must go through addRoute, not
-      // updateRoute — the backend's updateRoute fails with "Record not
-      // found" for an id it's never seen, and that failure used to be
-      // silently ignored here, meaning a new route could look saved on
-      // screen while never actually reaching the sheet at all.
-      var isNew = routes[i]._isNew;
-      delete routes[i]._isNew;
-      var res = isNew
-        ? await callAPI('addRoute', {record: routes[i]})
-        : await callAPI('updateRoute', {record: routes[i]});
-      if (res && res.error) { routeErrors.push((routes[i].destination||'route '+(i+1)) + ': ' + res.error); continue; }
-      ROUTES[i]=routes[i];
-    }
-    if (routeErrors.length) throw new Error('Route(s) failed to save — ' + routeErrors.join('; '));
     var horses=VEHICLES.filter(function(v){return!(v.vehicleType||'').toLowerCase().includes('trailer');});
     var tfRecords=horses.map(function(v){var plate=v.plate||v.code||'';var el=document.getElementById('tf-'+plate);var stageEl=document.getElementById('tfs-'+plate);var existing=TRUCK_FUEL.find(function(x){return(x.truck||'').toUpperCase()===plate.toUpperCase();});return{id:existing?existing.id:uuid(),truck:plate,baseFuel:parseFloat(el?el.value:0)||0,fuelStage:stageEl?stageEl.value:'Split'};}).filter(function(r){return r.baseFuel>0;});
-    if(tfRecords.length){await callAPI('saveTruckFuelConfig',{records:tfRecords});TRUCK_FUEL=tfRecords;}
     var defaultRates=[{permitType:'COMESA',appliesTo:'Horse'},{permitType:'COMESA',appliesTo:'Trailer'},{permitType:'Transit Permit',appliesTo:'Horse'},{permitType:'Transit Permit',appliesTo:'Trailer'},{permitType:'Carbon Tax',appliesTo:'Horse'},{permitType:'ZABS',appliesTo:'Trailer'}];
     var prRecords=defaultRates.map(function(d){var key='pr-'+d.permitType.replace(/\s/g,'')+'-'+d.appliesTo;var el=document.getElementById(key);var existing=PERMIT_RATES.find(function(r){return r.permitType===d.permitType&&r.appliesTo===d.appliesTo;});return{id:existing?existing.id:uuid(),permitType:d.permitType,appliesTo:d.appliesTo,rate:parseFloat(el?el.value:0)||0};}).filter(function(r){return r.rate>0;});
-    if(prRecords.length){await callAPI('savePermitRates',{records:prRecords});PERMIT_RATES=prRecords;}
     var trRecords=TRANSPORT_RATES.map(function(r,i){return Object.assign({},r,{customer:((document.getElementById('tr-cust-'+i)||{}).value||r.customer).toUpperCase(),destination:(document.getElementById('tr-dest-'+i)||{}).value||r.destination,rateUSD:parseFloat((document.getElementById('tr-rate-'+i)||{}).value||r.rateUSD)||0});}).filter(function(r){return r.customer&&r.rateUSD>0;});
-    if(trRecords.length){await callAPI('saveTransportRates',{records:trRecords});TRANSPORT_RATES=trRecords;}
+    var obRecords=DRIVER_OPENING_BALANCES.map(function(r,i){return Object.assign({},r,{driver:(document.getElementById('ob-driver-'+i)||{}).value||r.driver,openingBalanceTZS:parseFloat((document.getElementById('ob-amt-'+i)||{}).value||r.openingBalanceTZS)||0,asOfDate:(document.getElementById('ob-date-'+i)||{}).value||r.asOfDate});}).filter(function(r){return r.driver&&r.openingBalanceTZS>0;});
+
+    var jobs = [];
+    var jobLabels = [];
+    jobs.push(callAPI('saveSettings',{record:record}));     jobLabels.push('settings');
+    routes.forEach(function(r, i){
+      var isNew = r._isNew; delete r._isNew;
+      jobs.push(callAPI(isNew?'addRoute':'updateRoute', {record:r})); jobLabels.push('route:'+i);
+    });
+    if(tfRecords.length){ jobs.push(callAPI('saveTruckFuelConfig',{records:tfRecords})); jobLabels.push('truckfuel'); }
+    if(prRecords.length){ jobs.push(callAPI('savePermitRates',{records:prRecords}));     jobLabels.push('permitrates'); }
+    if(trRecords.length){ jobs.push(callAPI('saveTransportRates',{records:trRecords}));  jobLabels.push('transportrates'); }
+    jobs.push(callAPI('saveDriverOpeningBalances',{records:obRecords})); jobLabels.push('openingbal');
+
+    var results = await Promise.allSettled(jobs);
+
+    var routeErrors = [];
+    results.forEach(function(res, idx){
+      var label = jobLabels[idx];
+      var ok = res.status==='fulfilled' && !(res.value && res.value.error);
+      if (label === 'settings' && ok) { SETTINGS = Object.assign(SETTINGS, record); }
+      else if (label.indexOf('route:')===0) {
+        var ri = parseInt(label.split(':')[1], 10);
+        if (ok) { ROUTES[ri] = routes[ri]; }
+        else { routeErrors.push((routes[ri].destination||'route '+(ri+1)) + ': ' + (res.value&&res.value.error || (res.reason&&res.reason.message) || 'failed')); }
+      }
+      else if (label === 'truckfuel' && ok) { TRUCK_FUEL = tfRecords; }
+      else if (label === 'permitrates' && ok) { PERMIT_RATES = prRecords; }
+      else if (label === 'transportrates' && ok) { TRANSPORT_RATES = trRecords; }
+      else if (label === 'openingbal' && ok) { DRIVER_OPENING_BALANCES = obRecords; }
+    });
+    if (routeErrors.length) throw new Error('Route(s) failed to save — ' + routeErrors.join('; '));
+
     toast('All settings saved ✓','ok');
   }catch(e){toast('Error: '+e.message,'er');}
   finally{if(btn){btn.disabled=false;btn.textContent='💾 Save All Settings';}}

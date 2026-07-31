@@ -1680,7 +1680,7 @@ td,td *{font-size:13px!important;font-family:'Inter',sans-serif!important}
           <div class="formgrid">
             <input type="hidden" id="ded-id">
             <div class="formgroup"><label>Driver *</label>
-              <select id="ded-driver"><option value="">Select Driver...</option></select>
+              <div id="ded-driver-wrap"></div>
             </div>
             <div class="formgroup"><label>Date *</label><input type="date" id="ded-date"></div>
             <div class="formgroup"><label>Type *</label>
@@ -1693,7 +1693,7 @@ td,td *{font-size:13px!important;font-family:'Inter',sans-serif!important}
             <div class="formgroup full"><label>Description *</label><input type="text" id="ded-desc" placeholder="Describe the deduction..."></div>
             <div class="formgroup"><label>Amount (TZS) *</label><input type="number" id="ded-amount" min="0" placeholder="0"></div>
             <div class="formgroup"><label>Horse (if applicable)</label>
-              <select id="ded-horse"><option value="">Select Horse...</option></select>
+              <div id="ded-horse-wrap"></div>
             </div>
             <div class="formgroup full"><label>Notes</label><textarea id="ded-notes" placeholder="Additional notes..."></textarea></div>
           </div>
@@ -4275,10 +4275,8 @@ function _openDeductionModalShell() {
   document.getElementById('ded-id').value='';
   ['ded-date','ded-type','ded-refno','ded-desc','ded-amount','ded-notes'].forEach(function(id){var el=document.getElementById(id);if(el)el.value='';});
   document.getElementById('ded-date').value=today();
-  var dSel=document.getElementById('ded-driver');
-  dSel.innerHTML='<option value="">Select Driver...</option>'+DRIVERS.map(function(d){return '<option>'+esc(d.name||d.driverName||'')+'</option>';}).join('');
-  var hSel=document.getElementById('ded-horse');
-  hSel.innerHTML='<option value="">Select Horse...</option>'+VEHICLES.filter(function(v){return!(v.vehicleType||'').toLowerCase().includes('trailer');}).map(function(v){return '<option>'+esc(v.plate||v.code||'')+'</option>';}).join('');
+  document.getElementById('ded-driver-wrap').innerHTML = _atSearchableField('ded-driver', 'Search driver...', DRIVERS.map(function(d){ return d.name||d.driverName||''; }).filter(Boolean), null);
+  document.getElementById('ded-horse-wrap').innerHTML = _atSearchableField('ded-horse', 'Search horse...', VEHICLES.filter(function(v){ return !(v.vehicleType||'').toLowerCase().includes('trailer'); }).map(function(v){ return v.plate||v.code||''; }).filter(Boolean), null);
   document.getElementById('modal-deduction').classList.remove('hidden');
 }
 
@@ -8699,10 +8697,8 @@ function _openDeductionModalShell() {
   document.getElementById('ded-id').value='';
   ['ded-date','ded-type','ded-refno','ded-desc','ded-amount','ded-notes'].forEach(function(id){var el=document.getElementById(id);if(el)el.value='';});
   document.getElementById('ded-date').value=today();
-  var dSel=document.getElementById('ded-driver');
-  dSel.innerHTML='<option value="">Select Driver...</option>'+DRIVERS.map(function(d){return '<option>'+esc(d.name||d.driverName||'')+'</option>';}).join('');
-  var hSel=document.getElementById('ded-horse');
-  hSel.innerHTML='<option value="">Select Horse...</option>'+VEHICLES.filter(function(v){return!(v.vehicleType||'').toLowerCase().includes('trailer');}).map(function(v){return '<option>'+esc(v.plate||v.code||'')+'</option>';}).join('');
+  document.getElementById('ded-driver-wrap').innerHTML = _atSearchableField('ded-driver', 'Search driver...', DRIVERS.map(function(d){ return d.name||d.driverName||''; }).filter(Boolean), null);
+  document.getElementById('ded-horse-wrap').innerHTML = _atSearchableField('ded-horse', 'Search horse...', VEHICLES.filter(function(v){ return !(v.vehicleType||'').toLowerCase().includes('trailer'); }).map(function(v){ return v.plate||v.code||''; }).filter(Boolean), null);
   document.getElementById('modal-deduction').classList.remove('hidden');
 }
 

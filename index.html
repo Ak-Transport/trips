@@ -159,7 +159,9 @@ td,td *{font-size:13px!important;font-family:'Inter',sans-serif!important}
 </style>
 </head>
 <body>
-<div class="loadingoverlay" id="loading" style="display:none"><div class="spinner"></div><div style="color:var(--t2);font-size:13px" id="loadtext">Loading Trip System...</div></div>
+<div class="loadingoverlay" id="loading" style="display:none"><div class="spinner"></div><div style="color:var(--t2);font-size:13px" id="loadtext">Loading Trip System...</div>
+  <button id="loading-reload-btn" onclick="location.reload()" style="display:none;margin-top:18px;padding:8px 18px;background:var(--ac);color:#fff;border:none;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer">Taking too long? Click to reload</button>
+</div>
 <div class="toastbox" id="toastbox"></div>
 <div class="topbar">
   <div style="display:flex;align-items:center;padding:0 20px;height:46px;border-bottom:1px solid #f0f0f0">
@@ -2420,7 +2422,7 @@ td,td *{font-size:13px!important;font-family:'Inter',sans-serif!important}
 <script>
 // AK TRANSPORT — TRIP MANAGEMENT SYSTEM — Phase 1 Foundation
 // Replace the API constant below with your deployed Apps Script URL
-const API = 'https://script.google.com/macros/s/AKfycbzzj5MNvWCaMcEnyQJgxHK_Du7k4g17dE2gsmJLltOOwO1nNOS0JMT-SR3WBnFcMNKAQw/exec';
+const API = 'https://script.google.com/macros/s/AKfycbxMPPy1Oyz6KGql3FXURGMmt3qm3K8bNtfGiKQTg9yUgv3e0Tg5bDViZO3YZMd90hAxbw/exec';
 
 var CURRENT_USER=null,SETTINGS={},ROUTES=[],TRUCK_FUEL=[],PERMIT_RATES=[],TRANSPORT_RATES=[],
     RELEASES=[],TRIPS=[],PERMITS=[],RENEWAL_REQS=[],AGENT_ACCOUNTS=[],AGENT_EXPENSES=[],
@@ -2433,17 +2435,44 @@ var CURRENT_USER=null,SETTINGS={},ROUTES=[],TRUCK_FUEL=[],PERMIT_RATES=[],TRANSP
 function setSyncStatus(s){var d=document.getElementById('syndot'),l=document.getElementById('synlbl');if(!d||!l)return;d.className='dot '+s;l.textContent=s==='on'?'Synced':s==='sy'?'Syncing...':'Error';}
 
 // ── API ──
-async function callAPI(action,data){
+async function callAPI(action,data,_retryCount){
+  _retryCount=_retryCount||0;
   data=data||{};setSyncStatus('sy');
-  var ctrl=new AbortController(),timer=setTimeout(function(){ctrl.abort();},90000);
+  if(_retryCount>0){
+    var loadTxt=document.getElementById('loadtext');
+    if(loadTxt) loadTxt.textContent='Retrying... (attempt '+(_retryCount+1)+' of 3)';
+  }
+  var ctrl=new AbortController(),timer=setTimeout(function(){ctrl.abort();},25000);
   try{
     var res=await fetch(API,{method:'POST',body:JSON.stringify(Object.assign({action:action},data)),headers:{'Content-Type':'text/plain'},signal:ctrl.signal});
     clearTimeout(timer);var text=await res.text();var json;
     try{json=JSON.parse(text);}catch(e){json=null;}
     if(!json){setSyncStatus('on');return{success:true};}
-    if(json.error)throw new Error(json.error);
+    if(json.error){
+      // Only retry errors that look like a transient transport-level
+      // glitch (e.g. the request's action came through blank/corrupted
+      // under heavy simultaneous load), never a genuine business-logic
+      // error from the backend - retrying "Username not found" or
+      // "Record not found" would just delay showing a real error.
+      var isTransient=/^Unknown action:\s*$/.test(json.error);
+      if(isTransient&&_retryCount<2){
+        await new Promise(function(r){setTimeout(r,400*(_retryCount+1));});
+        return callAPI(action,data,_retryCount+1);
+      }
+      throw new Error(json.error);
+    }
     setSyncStatus('on');return json;
-  }catch(e){clearTimeout(timer);setSyncStatus('er');if(e.name==='AbortError')throw new Error('Request timed out. Please retry.');throw e;}
+  }catch(e){
+    clearTimeout(timer);
+    var isAbort=e.name==='AbortError';
+    var isNetworkFail=e instanceof TypeError;
+    if((isAbort||isNetworkFail)&&_retryCount<2){
+      setSyncStatus('sy');
+      await new Promise(function(r){setTimeout(r,400*(_retryCount+1));});
+      return callAPI(action,data,_retryCount+1);
+    }
+    setSyncStatus('er');if(isAbort)throw new Error('Request timed out. Please retry.');throw e;
+  }
 }
 
 // ── TOAST ──
@@ -2592,37 +2621,42 @@ async function loadAppData(){
   try{
     // TIER 1 — only what's needed to show the app and its first screen.
     // Kept small on purpose: fewer blocking calls = faster to usable.
-    // Settings-page reference data and Driver Ledger data are each
-    // combined into ONE backend call (getSettingsPageBundle,
-    // getDriverLedgerBundle) instead of 9 separate round-trips - same
-    // proven pattern as getWorkshopBundle, actually cutting the number
-    // of real network requests instead of just moving them between tiers.
-    var criticalCalls=[callAPI('getSettings'),callAPI('getReleases'),callAPI('getTrips'),
-      callAPI('getDrivers'),callAPI('getVehicles'),callAPI('getUsers'),callAPI('getPermits'),
+    // Drivers/Vehicles/Users are combined into ONE call (getWorkshopBundle)
+    // since all three have always required opening a SEPARATE, external
+    // spreadsheet (Workshop's) - doing that 3 separate times on every
+    // load was real, avoidable overhead unique to Trips. Settings-page
+    // reference data and Driver Ledger data are each combined into ONE
+    // backend call too (getSettingsPageBundle, getDriverLedgerBundle).
+    var _recentCutoff = new Date(); _recentCutoff.setDate(_recentCutoff.getDate()-90);
+    var _recentCutoffStr = _recentCutoff.toISOString().split('T')[0];
+    var criticalCalls=[callAPI('getSettings'),callAPI('getRecentReleases',{sinceDate:_recentCutoffStr}),callAPI('getRecentTrips',{sinceDate:_recentCutoffStr}),
+      callAPI('getWorkshopBundle'),callAPI('getPermits'),
       callAPI('getFuelRequests'),callAPI('getSettingsPageBundle'),callAPI('getDriverLedgerBundle')];
     var rs=await Promise.allSettled(criticalCalls);
     SETTINGS  = rs[0].status==='fulfilled' ? (rs[0].value.settings||{}) : {};
     RELEASES  = rs[1].status==='fulfilled' ? (rs[1].value.records||[]) : [];
     TRIPS     = rs[2].status==='fulfilled' ? (rs[2].value.records||[]) : [];
-    DRIVERS   = rs[3].status==='fulfilled' ? (rs[3].value.records||[]) : [];
-    VEHICLES  = rs[4].status==='fulfilled' ? (rs[4].value.records||[]) : [];
-    USERS     = rs[5].status==='fulfilled' ? (rs[5].value.records||[]) : [];
-    PERMITS   = rs[6].status==='fulfilled' ? (rs[6].value.records||[]) : [];
-    FUEL_REQUESTS = rs[7].status==='fulfilled' ? (rs[7].value.records||[]) : [];
-    if (rs[8].status==='fulfilled') {
-      ROUTES = rs[8].value.routes||[];
-      TRUCK_FUEL = rs[8].value.truckFuel||[];
-      PERMIT_RATES = rs[8].value.permitRates||[];
-      TRANSPORT_RATES = rs[8].value.transportRates||[];
-      DRIVER_OPENING_BALANCES = rs[8].value.openingBalances||[];
+    if (rs[3].status==='fulfilled') {
+      DRIVERS  = rs[3].value.drivers||[];
+      VEHICLES = rs[3].value.vehicles||[];
+      USERS    = rs[3].value.users||[];
     }
-    if (rs[9].status==='fulfilled') {
-      FUEL_LOSS = rs[9].value.fuelLoss||[];
-      SHORTAGE_PMTS = rs[9].value.shortagePmts||[];
-      DEDUCTIONS = rs[9].value.deductions||[];
-      DEDUCTION_PMTS = rs[9].value.deductionPmts||[];
+    PERMITS   = rs[4].status==='fulfilled' ? (rs[4].value.records||[]) : [];
+    FUEL_REQUESTS = rs[5].status==='fulfilled' ? (rs[5].value.records||[]) : [];
+    if (rs[6].status==='fulfilled') {
+      ROUTES = rs[6].value.routes||[];
+      TRUCK_FUEL = rs[6].value.truckFuel||[];
+      PERMIT_RATES = rs[6].value.permitRates||[];
+      TRANSPORT_RATES = rs[6].value.transportRates||[];
+      DRIVER_OPENING_BALANCES = rs[6].value.openingBalances||[];
     }
-    var _criticalNames = ['Settings','Releases','Trips','Drivers','Vehicles','Users','Permits','Fuel Requests',
+    if (rs[7].status==='fulfilled') {
+      FUEL_LOSS = rs[7].value.fuelLoss||[];
+      SHORTAGE_PMTS = rs[7].value.shortagePmts||[];
+      DEDUCTIONS = rs[7].value.deductions||[];
+      DEDUCTION_PMTS = rs[7].value.deductionPmts||[];
+    }
+    var _criticalNames = ['Settings','Releases','Trips','Drivers/Vehicles/Users','Permits','Fuel Requests',
       'Settings Page Data','Driver Ledger Data'];
     var _failedNames = rs.map(function(x,i){ return x.status==='rejected' ? _criticalNames[i]+' ('+(x.reason&&x.reason.message||'unknown error')+')' : null; }).filter(Boolean);
     if (_failedNames.length) toast('Failed to load: '+_failedNames.join(', '),'er');
@@ -2663,13 +2697,19 @@ async function loadAppData(){
     var bgBadge = document.getElementById('bgload-badge');
     if (bgBadge) bgBadge.style.display = 'flex';
     var secondaryCalls=[callAPI('getAgentAccounts'),callAPI('getAgentExpenses'),
-      callAPI('getInvoices'),callAPI('getRenewalReqs')];
+      callAPI('getInvoices'),callAPI('getRenewalReqs'),
+      callAPI('getOlderReleases',{beforeDate:_recentCutoffStr}),callAPI('getOlderTrips',{beforeDate:_recentCutoffStr})];
     var rs2=await Promise.allSettled(secondaryCalls);
     AGENT_ACCOUNTS   = rs2[0].status==='fulfilled'  ? (rs2[0].value.records||[]) : [];
     AGENT_EXPENSES   = rs2[1].status==='fulfilled'  ? (rs2[1].value.records||[]) : [];
     INVOICES         = rs2[2].status==='fulfilled'  ? (rs2[2].value.records||[]) : [];
     RENEWAL_REQS     = rs2[3].status==='fulfilled'  ? (rs2[3].value.records||[]) : [];
-    var _secondaryNames = ['Agent Accounts','Agent Expenses','Invoices','Renewal Requests'];
+    // Merge the older records in behind what Tier 1 already loaded -
+    // everything ends up fully available, exactly as before, it just
+    // arrives in two waves instead of one big upfront wait.
+    if (rs2[4].status==='fulfilled') RELEASES = RELEASES.concat(rs2[4].value.records||[]);
+    if (rs2[5].status==='fulfilled') TRIPS    = TRIPS.concat(rs2[5].value.records||[]);
+    var _secondaryNames = ['Agent Accounts','Agent Expenses','Invoices','Renewal Requests','Older Releases','Older Trips'];
     var _failedSecondary = rs2.map(function(x,i){ return x.status==='rejected' ? _secondaryNames[i] : null; }).filter(Boolean);
     if (_failedSecondary.length) toast('Failed to load: '+_failedSecondary.join(', ')+' — try Refresh','er');
     updateBadges();
@@ -2695,7 +2735,20 @@ async function loadAppData(){
   try{ var ae=await callAPI('getAddExpenses'); if(ae&&ae.records)ADD_EXPENSES=ae.records; }catch(e){}
 }
 async function refreshAll(){await loadAppData();}
-function show_loading(show,msg){var el=document.getElementById('loading');if(!el)return;el.style.display=show?'flex':'none';if(msg){var lt=document.getElementById('loadtext');if(lt)lt.textContent=msg;}}
+var _loadingReloadTimer=null;
+function show_loading(show,msg){
+  var el=document.getElementById('loading');if(!el)return;
+  el.style.display=show?'flex':'none';
+  if(msg){var lt=document.getElementById('loadtext');if(lt)lt.textContent=msg;}
+  var reloadBtn=document.getElementById('loading-reload-btn');
+  if(_loadingReloadTimer){clearTimeout(_loadingReloadTimer);_loadingReloadTimer=null;}
+  if(show){
+    if(reloadBtn) reloadBtn.style.display='none';
+    _loadingReloadTimer=setTimeout(function(){ if(reloadBtn) reloadBtn.style.display='inline-block'; },15000);
+  } else {
+    if(reloadBtn) reloadBtn.style.display='none';
+  }
+}
 
 // ── BADGES ──
 function updateBadges(){

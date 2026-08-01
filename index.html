@@ -2422,7 +2422,7 @@ td,td *{font-size:13px!important;font-family:'Inter',sans-serif!important}
 <script>
 // AK TRANSPORT — TRIP MANAGEMENT SYSTEM — Phase 1 Foundation
 // Replace the API constant below with your deployed Apps Script URL
-const API = 'https://script.google.com/macros/s/AKfycbxMPPy1Oyz6KGql3FXURGMmt3qm3K8bNtfGiKQTg9yUgv3e0Tg5bDViZO3YZMd90hAxbw/exec';
+const API = 'https://script.google.com/macros/s/AKfycbxNnDTMH3CI_6y6O7QhlIE3PGi9NBycuPfsXGGzDO-vuQPde29JY-4oJOZouKG16R3N-w/exec';
 
 var CURRENT_USER=null,SETTINGS={},ROUTES=[],TRUCK_FUEL=[],PERMIT_RATES=[],TRANSPORT_RATES=[],
     RELEASES=[],TRIPS=[],PERMITS=[],RENEWAL_REQS=[],AGENT_ACCOUNTS=[],AGENT_EXPENSES=[],
@@ -4150,10 +4150,16 @@ async function saveEditTrip() {
   btn.disabled = true; btn.textContent = 'Saving...';
 
   try {
-    var newLoadDocUrl = await _uploadTripDocIfNeeded('et-loaddoc', t.tripNo+'_loading');
-    if (newLoadDocUrl) t.loadDocUrl = newLoadDocUrl;
-    var newOffDocUrl = await _uploadTripDocIfNeeded('et-offdoc', t.tripNo+'_offloading');
-    if (newOffDocUrl) t.offDocUrl = newOffDocUrl;
+    // Both uploads are completely independent of each other - run them
+    // together instead of one after the other, which was doubling the
+    // wait whenever both a loading and offloading document were being
+    // uploaded in the same edit.
+    var _docResults = await Promise.all([
+      _uploadTripDocIfNeeded('et-loaddoc', t.tripNo+'_loading'),
+      _uploadTripDocIfNeeded('et-offdoc', t.tripNo+'_offloading')
+    ]);
+    if (_docResults[0]) t.loadDocUrl = _docResults[0];
+    if (_docResults[1]) t.offDocUrl = _docResults[1];
   } catch(e) { toast('Document upload failed: '+e.message,'er'); btn.disabled=false; btn.innerHTML='&#128190; Save Changes'; return; }
 
   var allow     = loaded * 0.003;
@@ -5007,15 +5013,13 @@ async function saveAllSettings(){
     var defaultRates=[{permitType:'COMESA',appliesTo:'Horse'},{permitType:'COMESA',appliesTo:'Trailer'},{permitType:'Transit Permit',appliesTo:'Horse'},{permitType:'Transit Permit',appliesTo:'Trailer'},{permitType:'Carbon Tax',appliesTo:'Horse'},{permitType:'ZABS',appliesTo:'Trailer'}];
     var prRecords=defaultRates.map(function(d){var key='pr-'+d.permitType.replace(/\s/g,'')+'-'+d.appliesTo;var el=document.getElementById(key);var existing=PERMIT_RATES.find(function(r){return r.permitType===d.permitType&&r.appliesTo===d.appliesTo;});return{id:existing?existing.id:uuid(),permitType:d.permitType,appliesTo:d.appliesTo,rate:parseFloat(el?el.value:0)||0};}).filter(function(r){return r.rate>0;});
     var trRecords=TRANSPORT_RATES.map(function(r,i){return Object.assign({},r,{customer:((document.getElementById('tr-cust-'+i)||{}).value||r.customer).toUpperCase(),destination:(document.getElementById('tr-dest-'+i)||{}).value||r.destination,rateUSD:parseFloat((document.getElementById('tr-rate-'+i)||{}).value||r.rateUSD)||0});}).filter(function(r){return r.customer&&r.rateUSD>0;});
-    var obRecords=DRIVER_OPENING_BALANCES.map(function(r,i){return Object.assign({},r,{driver:(document.getElementById('ob-driver-'+i)||{}).value||r.driver,openingBalanceTZS:parseFloat((document.getElementById('ob-amt-'+i)||{}).value||r.openingBalanceTZS)||0,asOfDate:(document.getElementById('ob-date-'+i)||{}).value||r.asOfDate});}).filter(function(r){return r.driver&&r.openingBalanceTZS>0;});
+    var obRecords=DRIVER_OPENING_BALANCES.map(function(r,i){return Object.assign({},r,{driver:(document.getElementById('ob-driver-'+i)||{}).value||r.driver,openingBalanceTZS:parseFloat((document.getElementById('ob-amt-'+i)||{}).value||r.openingBalanceTZS)||0,asOfDate:(document.getElementById('ob-date-'+i)||{}).value||r.asOfDate});}).filter(function(r){return r.driver&&r.openingBalanceTZS>=0;});
 
     var jobs = [];
     var jobLabels = [];
     jobs.push(callAPI('saveSettings',{record:record}));     jobLabels.push('settings');
-    routes.forEach(function(r, i){
-      var isNew = r._isNew; delete r._isNew;
-      jobs.push(callAPI(isNew?'addRoute':'updateRoute', {record:r})); jobLabels.push('route:'+i);
-    });
+    routes.forEach(function(r){ delete r._isNew; });
+    jobs.push(callAPI('saveRoutes',{records:routes})); jobLabels.push('routes');
     if(tfRecords.length){ jobs.push(callAPI('saveTruckFuelConfig',{records:tfRecords})); jobLabels.push('truckfuel'); }
     if(prRecords.length){ jobs.push(callAPI('savePermitRates',{records:prRecords}));     jobLabels.push('permitrates'); }
     if(trRecords.length){ jobs.push(callAPI('saveTransportRates',{records:trRecords}));  jobLabels.push('transportrates'); }
@@ -5028,17 +5032,16 @@ async function saveAllSettings(){
       var label = jobLabels[idx];
       var ok = res.status==='fulfilled' && !(res.value && res.value.error);
       if (label === 'settings' && ok) { SETTINGS = Object.assign(SETTINGS, record); }
-      else if (label.indexOf('route:')===0) {
-        var ri = parseInt(label.split(':')[1], 10);
-        if (ok) { ROUTES[ri] = routes[ri]; }
-        else { routeErrors.push((routes[ri].destination||'route '+(ri+1)) + ': ' + (res.value&&res.value.error || (res.reason&&res.reason.message) || 'failed')); }
+      else if (label === 'routes') {
+        if (ok) { ROUTES = routes; }
+        else { routeErrors.push(res.value&&res.value.error || (res.reason&&res.reason.message) || 'failed'); }
       }
       else if (label === 'truckfuel' && ok) { TRUCK_FUEL = tfRecords; }
       else if (label === 'permitrates' && ok) { PERMIT_RATES = prRecords; }
       else if (label === 'transportrates' && ok) { TRANSPORT_RATES = trRecords; }
       else if (label === 'openingbal' && ok) { DRIVER_OPENING_BALANCES = obRecords; }
     });
-    if (routeErrors.length) throw new Error('Route(s) failed to save — ' + routeErrors.join('; '));
+    if (routeErrors.length) throw new Error('Routes failed to save — ' + routeErrors.join('; '));
 
     toast('All settings saved ✓','ok');
   }catch(e){toast('Error: '+e.message,'er');}
@@ -8572,10 +8575,16 @@ async function saveEditTrip() {
   btn.disabled = true; btn.textContent = 'Saving...';
 
   try {
-    var newLoadDocUrl = await _uploadTripDocIfNeeded('et-loaddoc', t.tripNo+'_loading');
-    if (newLoadDocUrl) t.loadDocUrl = newLoadDocUrl;
-    var newOffDocUrl = await _uploadTripDocIfNeeded('et-offdoc', t.tripNo+'_offloading');
-    if (newOffDocUrl) t.offDocUrl = newOffDocUrl;
+    // Both uploads are completely independent of each other - run them
+    // together instead of one after the other, which was doubling the
+    // wait whenever both a loading and offloading document were being
+    // uploaded in the same edit.
+    var _docResults = await Promise.all([
+      _uploadTripDocIfNeeded('et-loaddoc', t.tripNo+'_loading'),
+      _uploadTripDocIfNeeded('et-offdoc', t.tripNo+'_offloading')
+    ]);
+    if (_docResults[0]) t.loadDocUrl = _docResults[0];
+    if (_docResults[1]) t.offDocUrl = _docResults[1];
   } catch(e) { toast('Document upload failed: '+e.message,'er'); btn.disabled=false; btn.innerHTML='&#128190; Save Changes'; return; }
 
   var allow     = loaded * 0.003;
@@ -9351,15 +9360,13 @@ async function saveAllSettings(){
     var defaultRates=[{permitType:'COMESA',appliesTo:'Horse'},{permitType:'COMESA',appliesTo:'Trailer'},{permitType:'Transit Permit',appliesTo:'Horse'},{permitType:'Transit Permit',appliesTo:'Trailer'},{permitType:'Carbon Tax',appliesTo:'Horse'},{permitType:'ZABS',appliesTo:'Trailer'}];
     var prRecords=defaultRates.map(function(d){var key='pr-'+d.permitType.replace(/\s/g,'')+'-'+d.appliesTo;var el=document.getElementById(key);var existing=PERMIT_RATES.find(function(r){return r.permitType===d.permitType&&r.appliesTo===d.appliesTo;});return{id:existing?existing.id:uuid(),permitType:d.permitType,appliesTo:d.appliesTo,rate:parseFloat(el?el.value:0)||0};}).filter(function(r){return r.rate>0;});
     var trRecords=TRANSPORT_RATES.map(function(r,i){return Object.assign({},r,{customer:((document.getElementById('tr-cust-'+i)||{}).value||r.customer).toUpperCase(),destination:(document.getElementById('tr-dest-'+i)||{}).value||r.destination,rateUSD:parseFloat((document.getElementById('tr-rate-'+i)||{}).value||r.rateUSD)||0});}).filter(function(r){return r.customer&&r.rateUSD>0;});
-    var obRecords=DRIVER_OPENING_BALANCES.map(function(r,i){return Object.assign({},r,{driver:(document.getElementById('ob-driver-'+i)||{}).value||r.driver,openingBalanceTZS:parseFloat((document.getElementById('ob-amt-'+i)||{}).value||r.openingBalanceTZS)||0,asOfDate:(document.getElementById('ob-date-'+i)||{}).value||r.asOfDate});}).filter(function(r){return r.driver&&r.openingBalanceTZS>0;});
+    var obRecords=DRIVER_OPENING_BALANCES.map(function(r,i){return Object.assign({},r,{driver:(document.getElementById('ob-driver-'+i)||{}).value||r.driver,openingBalanceTZS:parseFloat((document.getElementById('ob-amt-'+i)||{}).value||r.openingBalanceTZS)||0,asOfDate:(document.getElementById('ob-date-'+i)||{}).value||r.asOfDate});}).filter(function(r){return r.driver&&r.openingBalanceTZS>=0;});
 
     var jobs = [];
     var jobLabels = [];
     jobs.push(callAPI('saveSettings',{record:record}));     jobLabels.push('settings');
-    routes.forEach(function(r, i){
-      var isNew = r._isNew; delete r._isNew;
-      jobs.push(callAPI(isNew?'addRoute':'updateRoute', {record:r})); jobLabels.push('route:'+i);
-    });
+    routes.forEach(function(r){ delete r._isNew; });
+    jobs.push(callAPI('saveRoutes',{records:routes})); jobLabels.push('routes');
     if(tfRecords.length){ jobs.push(callAPI('saveTruckFuelConfig',{records:tfRecords})); jobLabels.push('truckfuel'); }
     if(prRecords.length){ jobs.push(callAPI('savePermitRates',{records:prRecords}));     jobLabels.push('permitrates'); }
     if(trRecords.length){ jobs.push(callAPI('saveTransportRates',{records:trRecords}));  jobLabels.push('transportrates'); }
@@ -9372,17 +9379,16 @@ async function saveAllSettings(){
       var label = jobLabels[idx];
       var ok = res.status==='fulfilled' && !(res.value && res.value.error);
       if (label === 'settings' && ok) { SETTINGS = Object.assign(SETTINGS, record); }
-      else if (label.indexOf('route:')===0) {
-        var ri = parseInt(label.split(':')[1], 10);
-        if (ok) { ROUTES[ri] = routes[ri]; }
-        else { routeErrors.push((routes[ri].destination||'route '+(ri+1)) + ': ' + (res.value&&res.value.error || (res.reason&&res.reason.message) || 'failed')); }
+      else if (label === 'routes') {
+        if (ok) { ROUTES = routes; }
+        else { routeErrors.push(res.value&&res.value.error || (res.reason&&res.reason.message) || 'failed'); }
       }
       else if (label === 'truckfuel' && ok) { TRUCK_FUEL = tfRecords; }
       else if (label === 'permitrates' && ok) { PERMIT_RATES = prRecords; }
       else if (label === 'transportrates' && ok) { TRANSPORT_RATES = trRecords; }
       else if (label === 'openingbal' && ok) { DRIVER_OPENING_BALANCES = obRecords; }
     });
-    if (routeErrors.length) throw new Error('Route(s) failed to save — ' + routeErrors.join('; '));
+    if (routeErrors.length) throw new Error('Routes failed to save — ' + routeErrors.join('; '));
 
     toast('All settings saved ✓','ok');
   }catch(e){toast('Error: '+e.message,'er');}

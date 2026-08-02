@@ -2435,6 +2435,24 @@ var CURRENT_USER=null,SETTINGS={},ROUTES=[],TRUCK_FUEL=[],PERMIT_RATES=[],TRANSP
 function setSyncStatus(s){var d=document.getElementById('syndot'),l=document.getElementById('synlbl');if(!d||!l)return;d.className='dot '+s;l.textContent=s==='on'?'Synced':s==='sy'?'Syncing...':'Error';}
 
 // ── API ──
+// Runs an array of call-starting functions in small waves instead of
+// all at once - each function only actually fires once its wave is
+// reached, not immediately when this is called. This exists because
+// firing many requests in the exact same instant appears to overwhelm
+// Google's own redirect infrastructure (the "echo" 404 we traced
+// today), even though each individual request is small and the
+// backend itself responds quickly - the problem is the number of
+// requests arriving at once, not the size of any one of them.
+async function _runInBatches(fns, batchSize) {
+  var results = [];
+  for (var i = 0; i < fns.length; i += batchSize) {
+    var batch = fns.slice(i, i + batchSize);
+    var batchResults = await Promise.allSettled(batch.map(function(fn){ return fn(); }));
+    results = results.concat(batchResults);
+  }
+  return results;
+}
+
 async function callAPI(action,data,_retryCount){
   _retryCount=_retryCount||0;
   data=data||{};setSyncStatus('sy');
@@ -2629,12 +2647,26 @@ async function loadAppData(){
     // backend call too (getSettingsPageBundle, getDriverLedgerBundle).
     var _recentCutoff = new Date(); _recentCutoff.setDate(_recentCutoff.getDate()-90);
     var _recentCutoffStr = _recentCutoff.toISOString().split('T')[0];
-    var criticalCalls=[callAPI('getSettings'),callAPI('getRecentReleases',{sinceDate:_recentCutoffStr}),callAPI('getRecentTrips',{sinceDate:_recentCutoffStr}),
-      callAPI('getDrivers'),callAPI('getVehicles'),callAPI('getUsers'),callAPI('getPermits'),
-      callAPI('getFuelRequests'),callAPI('getRoutes'),callAPI('getTruckFuelConfig'),
-      callAPI('getPermitRates'),callAPI('getTransportRates'),callAPI('getDriverOpeningBalances'),
-      callAPI('getFuelLoss'),callAPI('getShortagePayments'),callAPI('getDeductions'),callAPI('getDeductionPayments')];
-    var rs=await Promise.allSettled(criticalCalls);
+    var criticalFns=[
+      function(){return callAPI('getSettings');},
+      function(){return callAPI('getRecentReleases',{sinceDate:_recentCutoffStr});},
+      function(){return callAPI('getRecentTrips',{sinceDate:_recentCutoffStr});},
+      function(){return callAPI('getDrivers');},
+      function(){return callAPI('getVehicles');},
+      function(){return callAPI('getUsers');},
+      function(){return callAPI('getPermits');},
+      function(){return callAPI('getFuelRequests');},
+      function(){return callAPI('getRoutes');},
+      function(){return callAPI('getTruckFuelConfig');},
+      function(){return callAPI('getPermitRates');},
+      function(){return callAPI('getTransportRates');},
+      function(){return callAPI('getDriverOpeningBalances');},
+      function(){return callAPI('getFuelLoss');},
+      function(){return callAPI('getShortagePayments');},
+      function(){return callAPI('getDeductions');},
+      function(){return callAPI('getDeductionPayments');}
+    ];
+    var rs=await _runInBatches(criticalFns, 5);
     SETTINGS  = rs[0].status==='fulfilled' ? (rs[0].value.settings||{}) : {};
     RELEASES  = rs[1].status==='fulfilled' ? (rs[1].value.records||[]) : [];
     TRIPS     = rs[2].status==='fulfilled' ? (rs[2].value.records||[]) : [];
@@ -2693,10 +2725,15 @@ async function loadAppData(){
   try{
     var bgBadge = document.getElementById('bgload-badge');
     if (bgBadge) bgBadge.style.display = 'flex';
-    var secondaryCalls=[callAPI('getAgentAccounts'),callAPI('getAgentExpenses'),
-      callAPI('getInvoices'),callAPI('getRenewalReqs'),
-      callAPI('getOlderReleases',{beforeDate:_recentCutoffStr}),callAPI('getOlderTrips',{beforeDate:_recentCutoffStr})];
-    var rs2=await Promise.allSettled(secondaryCalls);
+    var secondaryFns=[
+      function(){return callAPI('getAgentAccounts');},
+      function(){return callAPI('getAgentExpenses');},
+      function(){return callAPI('getInvoices');},
+      function(){return callAPI('getRenewalReqs');},
+      function(){return callAPI('getOlderReleases',{beforeDate:_recentCutoffStr});},
+      function(){return callAPI('getOlderTrips',{beforeDate:_recentCutoffStr});}
+    ];
+    var rs2=await _runInBatches(secondaryFns, 5);
     AGENT_ACCOUNTS   = rs2[0].status==='fulfilled'  ? (rs2[0].value.records||[]) : [];
     AGENT_EXPENSES   = rs2[1].status==='fulfilled'  ? (rs2[1].value.records||[]) : [];
     INVOICES         = rs2[2].status==='fulfilled'  ? (rs2[2].value.records||[]) : [];

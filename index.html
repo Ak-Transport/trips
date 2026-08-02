@@ -2422,7 +2422,7 @@ td,td *{font-size:13px!important;font-family:'Inter',sans-serif!important}
 <script>
 // AK TRANSPORT — TRIP MANAGEMENT SYSTEM — Phase 1 Foundation
 // Replace the API constant below with your deployed Apps Script URL
-const API = 'https://script.google.com/macros/s/AKfycbxNnDTMH3CI_6y6O7QhlIE3PGi9NBycuPfsXGGzDO-vuQPde29JY-4oJOZouKG16R3N-w/exec';
+const API = 'https://script.google.com/macros/s/AKfycby-cPNVHqkBPDOfpnjoZJOBEr56hF1CxfTLRHL4zyo1TqUXg5c7ehhr-aI9DcAzIvm0IA/exec';
 
 var CURRENT_USER=null,SETTINGS={},ROUTES=[],TRUCK_FUEL=[],PERMIT_RATES=[],TRANSPORT_RATES=[],
     RELEASES=[],TRIPS=[],PERMITS=[],RENEWAL_REQS=[],AGENT_ACCOUNTS=[],AGENT_EXPENSES=[],
@@ -2630,34 +2630,31 @@ async function loadAppData(){
     var _recentCutoff = new Date(); _recentCutoff.setDate(_recentCutoff.getDate()-90);
     var _recentCutoffStr = _recentCutoff.toISOString().split('T')[0];
     var criticalCalls=[callAPI('getSettings'),callAPI('getRecentReleases',{sinceDate:_recentCutoffStr}),callAPI('getRecentTrips',{sinceDate:_recentCutoffStr}),
-      callAPI('getWorkshopBundle'),callAPI('getPermits'),
-      callAPI('getFuelRequests'),callAPI('getSettingsPageBundle'),callAPI('getDriverLedgerBundle')];
+      callAPI('getDrivers'),callAPI('getVehicles'),callAPI('getUsers'),callAPI('getPermits'),
+      callAPI('getFuelRequests'),callAPI('getRoutes'),callAPI('getTruckFuelConfig'),
+      callAPI('getPermitRates'),callAPI('getTransportRates'),callAPI('getDriverOpeningBalances'),
+      callAPI('getFuelLoss'),callAPI('getShortagePayments'),callAPI('getDeductions'),callAPI('getDeductionPayments')];
     var rs=await Promise.allSettled(criticalCalls);
     SETTINGS  = rs[0].status==='fulfilled' ? (rs[0].value.settings||{}) : {};
     RELEASES  = rs[1].status==='fulfilled' ? (rs[1].value.records||[]) : [];
     TRIPS     = rs[2].status==='fulfilled' ? (rs[2].value.records||[]) : [];
-    if (rs[3].status==='fulfilled') {
-      DRIVERS  = rs[3].value.drivers||[];
-      VEHICLES = rs[3].value.vehicles||[];
-      USERS    = rs[3].value.users||[];
-    }
-    PERMITS   = rs[4].status==='fulfilled' ? (rs[4].value.records||[]) : [];
-    FUEL_REQUESTS = rs[5].status==='fulfilled' ? (rs[5].value.records||[]) : [];
-    if (rs[6].status==='fulfilled') {
-      ROUTES = rs[6].value.routes||[];
-      TRUCK_FUEL = rs[6].value.truckFuel||[];
-      PERMIT_RATES = rs[6].value.permitRates||[];
-      TRANSPORT_RATES = rs[6].value.transportRates||[];
-      DRIVER_OPENING_BALANCES = rs[6].value.openingBalances||[];
-    }
-    if (rs[7].status==='fulfilled') {
-      FUEL_LOSS = rs[7].value.fuelLoss||[];
-      SHORTAGE_PMTS = rs[7].value.shortagePmts||[];
-      DEDUCTIONS = rs[7].value.deductions||[];
-      DEDUCTION_PMTS = rs[7].value.deductionPmts||[];
-    }
-    var _criticalNames = ['Settings','Releases','Trips','Drivers/Vehicles/Users','Permits','Fuel Requests',
-      'Settings Page Data','Driver Ledger Data'];
+    DRIVERS   = rs[3].status==='fulfilled' ? (rs[3].value.records||[]) : [];
+    VEHICLES  = rs[4].status==='fulfilled' ? (rs[4].value.records||[]) : [];
+    USERS     = rs[5].status==='fulfilled' ? (rs[5].value.records||[]) : [];
+    PERMITS   = rs[6].status==='fulfilled' ? (rs[6].value.records||[]) : [];
+    FUEL_REQUESTS = rs[7].status==='fulfilled' ? (rs[7].value.records||[]) : [];
+    ROUTES    = rs[8].status==='fulfilled' ? (rs[8].value.records||[]) : [];
+    TRUCK_FUEL = rs[9].status==='fulfilled' ? (rs[9].value.records||[]) : [];
+    PERMIT_RATES = rs[10].status==='fulfilled' ? (rs[10].value.records||[]) : [];
+    TRANSPORT_RATES = rs[11].status==='fulfilled' ? (rs[11].value.records||[]) : [];
+    DRIVER_OPENING_BALANCES = rs[12].status==='fulfilled' ? (rs[12].value.records||[]) : [];
+    FUEL_LOSS = rs[13].status==='fulfilled' ? (rs[13].value.records||[]) : [];
+    SHORTAGE_PMTS = rs[14].status==='fulfilled' ? (rs[14].value.records||[]) : [];
+    DEDUCTIONS = rs[15].status==='fulfilled' ? (rs[15].value.records||[]) : [];
+    DEDUCTION_PMTS = rs[16].status==='fulfilled' ? (rs[16].value.records||[]) : [];
+    var _criticalNames = ['Settings','Releases','Trips','Drivers','Vehicles','Users','Permits','Fuel Requests',
+      'Routes','Truck Fuel Config','Permit Rates','Transport Rates','Driver Opening Balances',
+      'Fuel Loss','Shortage Payments','Deductions','Deduction Payments'];
     var _failedNames = rs.map(function(x,i){ return x.status==='rejected' ? _criticalNames[i]+' ('+(x.reason&&x.reason.message||'unknown error')+')' : null; }).filter(Boolean);
     if (_failedNames.length) toast('Failed to load: '+_failedNames.join(', '),'er');
     // Re-sync CURRENT_USER against the freshly-fetched USERS record, so
@@ -5051,31 +5048,58 @@ async function saveAllSettings(){
 // ── LOGIN ──
 async function initLogin(){
   try{var saved=sessionStorage.getItem('ak_trip_user');if(saved){var user=JSON.parse(saved);if(user&&user.username){CURRENT_USER=user;afterLogin(user);return;}}}catch(e){}
-  document.getElementById('aklgstatus').textContent='Loading...';
-  try{var r=await callAPI('getUsers');USERS=r.records||[];document.getElementById('aklgstatus').textContent=USERS.length?'Ready to sign in':'No users found — check API URL';}
-  catch(e){document.getElementById('aklgstatus').textContent='⚠️ Cannot connect — paste your Apps Script URL in the API constant';}
+  // The login form itself doesn't need any data to be usable - the
+  // user list is only fetched the moment "Sign In" is clicked, so
+  // there's nothing to wait for here at all.
+  var statusEl=document.getElementById('aklgstatus');
+  if(statusEl) statusEl.textContent='';
 }
-function doSignIn(){
+var _speculativeLoadPromise = null;
+async function doSignIn(){
   var uEl=document.getElementById('aklgu');var pEl=document.getElementById('aklgp');
   if(!uEl||!pEl){console.warn('Login form not found');return;}
   var u=(uEl.value||'').trim();var p=pEl.value||'';
   var errEl=document.getElementById('aklge');if(errEl)errEl.textContent='';
   if(!u||!p){errEl.textContent='Enter username and password';return;}
-  if(!USERS.length){errEl.textContent='⚠️ System loading. Please wait.';return;}
+  var btn=document.getElementById('aklgbtn');
+  if(!USERS.length){
+    if(btn){btn.disabled=true;btn.textContent='Connecting...';}
+    try{
+      var r=await callAPI('getUsers');
+      USERS=r.records||[];
+      if(!USERS.length){errEl.textContent='No users found — check API URL';if(btn){btn.disabled=false;btn.textContent='Sign In';}return;}
+    }catch(e){
+      errEl.textContent='⚠️ Cannot connect — check your Apps Script URL';
+      if(btn){btn.disabled=false;btn.textContent='Sign In';}
+      return;
+    }
+    if(btn){btn.disabled=false;btn.textContent='Sign In';}
+  }
   var found=USERS.find(function(user){return(user.username||'').toLowerCase()===u.toLowerCase();});
   if(!found){errEl.textContent='Username not found';return;}
   if((found.status||'active')==='inactive'){errEl.textContent='Account inactive. Contact admin.';return;}
   if((found.password||'')!==p){errEl.textContent='Incorrect password';return;}
-  var btn=document.getElementById('aklgbtn');var box=document.getElementById('aklgb');if(btn)btn.disabled=true;
+  // The app's actual data (Trips, Releases, etc.) is identical no
+  // matter which valid user is signing in - there's no reason to wait
+  // until credentials are confirmed before starting to fetch it. Kick
+  // it off right now, in parallel with the brief login animation,
+  // instead of only starting once the user is fully "in" - this
+  // overlaps two things that used to happen one after another.
+  _speculativeLoadPromise = loadAppData();
+  if(btn)btn.disabled=true;var box=document.getElementById('aklgb');
   if(box){box.innerHTML='<div style="display:flex;flex-direction:column;align-items:center;justify-content:center;padding:20px 0;gap:18px"><div style="width:48px;height:48px;border:3px solid #d2d2d7;border-top-color:#0a2d6e;border-radius:50%;animation:spin .7s linear infinite"></div><div style="font-size:18px;font-weight:700;color:#0a2d6e">Logging in...</div></div>';}
-  setTimeout(function(){CURRENT_USER=found;try{sessionStorage.setItem('ak_trip_user',JSON.stringify(found));}catch(e){}afterLogin(found);},900);
+  CURRENT_USER=found;try{sessionStorage.setItem('ak_trip_user',JSON.stringify(found));}catch(e){}afterLogin(found);
 }
-function afterLogin(user){
+async function afterLogin(user){
   document.getElementById('aklg').style.display='none';document.getElementById('mainlayout').style.display='flex';
   var uw=document.getElementById('usermenu_wrap');if(uw)uw.style.display='inline-block';
   var nw=document.getElementById('newwrap');if(nw)nw.style.display='flex';
   var un=document.getElementById('topbar_username');if(un)un.textContent=user.name||user.username;
-  loadAppData();
+  // If data loading was already kicked off speculatively the moment
+  // Sign In was clicked, just wait for that same in-flight load
+  // instead of starting an entirely new one from scratch.
+  if (_speculativeLoadPromise) { await _speculativeLoadPromise; _speculativeLoadPromise = null; }
+  else { await loadAppData(); }
 }
 function doLogout(){
   try{sessionStorage.removeItem('ak_trip_user');}catch(e){}CURRENT_USER=null;
@@ -9398,16 +9422,16 @@ async function saveAllSettings(){
 // ── LOGIN ──
 async function initLogin(){
   try{var saved=sessionStorage.getItem('ak_trip_user');if(saved){var user=JSON.parse(saved);if(user&&user.username){CURRENT_USER=user;afterLogin(user);return;}}}catch(e){}
-  document.getElementById('aklgstatus').textContent='Loading...';
-  try{var r=await callAPI('getUsers');USERS=r.records||[];document.getElementById('aklgstatus').textContent=USERS.length?'Ready to sign in':'No users found — check API URL';}
-  catch(e){document.getElementById('aklgstatus').textContent='⚠️ Cannot connect — paste your Apps Script URL in the API constant';}
+  var statusEl=document.getElementById('aklgstatus');
+  if(statusEl) statusEl.textContent='';
 }
-function afterLogin(user){
+async function afterLogin(user){
   document.getElementById('aklg').style.display='none';document.getElementById('mainlayout').style.display='flex';
   var uw=document.getElementById('usermenu_wrap');if(uw)uw.style.display='inline-block';
   var nw=document.getElementById('newwrap');if(nw)nw.style.display='flex';
   var un=document.getElementById('topbar_username');if(un)un.textContent=user.name||user.username;
-  loadAppData();
+  if (_speculativeLoadPromise) { await _speculativeLoadPromise; _speculativeLoadPromise = null; }
+  else { await loadAppData(); }
 }
 function doLogout(){
   try{sessionStorage.removeItem('ak_trip_user');}catch(e){}CURRENT_USER=null;

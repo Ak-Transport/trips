@@ -159,9 +159,7 @@ td,td *{font-size:13px!important;font-family:'Inter',sans-serif!important}
 </style>
 </head>
 <body>
-<div class="loadingoverlay" id="loading" style="display:none"><div class="spinner"></div><div style="color:var(--t2);font-size:13px" id="loadtext">Loading Trip System...</div>
-  <button id="loading-reload-btn" onclick="location.reload()" style="display:none;margin-top:18px;padding:8px 18px;background:var(--ac);color:#fff;border:none;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer">Taking too long? Click to reload</button>
-</div>
+<div class="loadingoverlay" id="loading" style="display:none"><div class="spinner"></div><div style="color:var(--t2);font-size:13px" id="loadtext">Loading Trip System...</div></div>
 <div class="toastbox" id="toastbox"></div>
 <div class="topbar">
   <div style="display:flex;align-items:center;padding:0 20px;height:46px;border-bottom:1px solid #f0f0f0">
@@ -2422,7 +2420,7 @@ td,td *{font-size:13px!important;font-family:'Inter',sans-serif!important}
 <script>
 // AK TRANSPORT — TRIP MANAGEMENT SYSTEM — Phase 1 Foundation
 // Replace the API constant below with your deployed Apps Script URL
-const API = 'https://script.google.com/macros/s/AKfycbwVDsPb4bksytYxtTRNLR-vpZ8LhvvWUq4giKrni1gdbuCQfqH6q6nFDROxKlgjpxbL6Q/exec';
+const API = 'https://script.google.com/macros/s/AKfycbz5g-QV8w5zW65eUM518A0cAcBIU1e17ImlQwQFw0SSkE5NJ_sH4P63zk42JzEVR_-syw/exec';
 
 var CURRENT_USER=null,SETTINGS={},ROUTES=[],TRUCK_FUEL=[],PERMIT_RATES=[],TRANSPORT_RATES=[],
     RELEASES=[],TRIPS=[],PERMITS=[],RENEWAL_REQS=[],AGENT_ACCOUNTS=[],AGENT_EXPENSES=[],
@@ -2456,10 +2454,6 @@ async function _runInBatches(fns, batchSize) {
 async function callAPI(action,data,_retryCount){
   _retryCount=_retryCount||0;
   data=data||{};setSyncStatus('sy');
-  if(_retryCount>0){
-    var loadTxt=document.getElementById('loadtext');
-    if(loadTxt) loadTxt.textContent='Retrying... (attempt '+(_retryCount+1)+' of 3)';
-  }
   var ctrl=new AbortController(),timer=setTimeout(function(){ctrl.abort();},25000);
   try{
     var res=await fetch(API,{method:'POST',body:JSON.stringify(Object.assign({action:action},data)),headers:{'Content-Type':'text/plain'},signal:ctrl.signal});
@@ -2769,14 +2763,11 @@ async function loadAppData(){
   try{ var ae=await callAPI('getAddExpenses'); if(ae&&ae.records)ADD_EXPENSES=ae.records; }catch(e){}
 }
 async function refreshAll(){await loadAppData();}
-var _loadingReloadTimer=null;
 function show_loading(show,msg){
   var el=document.getElementById('loading');if(!el)return;
   el.style.display=show?'flex':'none';
   var lt=document.getElementById('loadtext');
   if(msg&&lt)lt.textContent=msg;
-  var reloadBtn=document.getElementById('loading-reload-btn');
-  if(_loadingReloadTimer){clearTimeout(_loadingReloadTimer);_loadingReloadTimer=null;}
   // Cycle through progress messages so the screen visibly shows what's
   // happening rather than sitting on one static line (same pattern as
   // Workshop, with Trips-specific wording).
@@ -2787,10 +2778,6 @@ function show_loading(show,msg){
     window._loadMsgTimer=setInterval(function(){
       i++; if(i<msgs.length&&lt) lt.textContent=msgs[i];
     },900);
-    if(reloadBtn) reloadBtn.style.display='none';
-    _loadingReloadTimer=setTimeout(function(){ if(reloadBtn) reloadBtn.style.display='inline-block'; },15000);
-  } else {
-    if(reloadBtn) reloadBtn.style.display='none';
   }
 }
 
@@ -14215,7 +14202,7 @@ console.log('Phase 8 — P&L Summaries loaded ✓');
 
 var WORKSHOP_COSTS = []; // loaded on demand
 var WORKSHOP_LOADED = false;
-const WORKSHOP_API = 'https://script.google.com/macros/s/AKfycbyQozlxseXlQqBsdfgwbMlJasX7d1P-KFkYC9LUGCYkvEnQyVH04ENq1CdPO6t9qUHZcw/exec';
+const WORKSHOP_API = 'https://script.google.com/macros/s/AKfycbxcbtQrAuHvD4QAv5TQrbimBKjQ77B94wh6iPxGacdK8CVzVGhDMGd2Y-rYBWEpGYtQ8Q/exec';
 
 // ── LOAD WORKSHOP DATA ────────────────────────────────────────────
 async function loadCombinedData() {

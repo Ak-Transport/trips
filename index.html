@@ -2451,6 +2451,28 @@ async function _runInBatches(fns, batchSize) {
   return results;
 }
 
+// Fetches a paginated endpoint page by page until everything has been
+// retrieved, then returns the assembled result in the same shape as a
+// normal call ({records:[...]}) so callers don't need to care that it
+// arrived in pieces. Each page stays small enough to transfer
+// reliably, which is what makes this robust for large datasets.
+async function callAPIPaged(action, pageSize, extraData){
+  pageSize = pageSize || 300;
+  var all = [];
+  var offset = 0;
+  var guard = 0; // hard stop so a backend bug can never cause an endless loop
+  while (guard < 100) {
+    guard++;
+    var payload = Object.assign({offset:offset, limit:pageSize}, extraData||{});
+    var res = await callAPI(action, payload);
+    var chunk = (res && res.records) || [];
+    all = all.concat(chunk);
+    if (!res || !res.hasMore) break;
+    offset += pageSize;
+  }
+  return {records: all};
+}
+
 async function callAPI(action,data,_retryCount){
   _retryCount=_retryCount||0;
   data=data||{};setSyncStatus('sy');
@@ -2459,7 +2481,19 @@ async function callAPI(action,data,_retryCount){
     var res=await fetch(API,{method:'POST',body:JSON.stringify(Object.assign({action:action},data)),headers:{'Content-Type':'text/plain'},signal:ctrl.signal});
     clearTimeout(timer);var text=await res.text();var json;
     try{json=JSON.parse(text);}catch(e){json=null;}
-    if(!json){setSyncStatus('on');return{success:true};}
+    if(!json){
+      // A response we can't parse is a genuine failure, not a success.
+      // This previously returned {success:true} with no data, which
+      // silently emptied arrays (e.g. PERMITS) whenever a large
+      // response arrived truncated - no error, no warning, just
+      // missing records. Treat it as retryable instead.
+      if(_retryCount<2){
+        await new Promise(function(r){setTimeout(r,400*(_retryCount+1));});
+        return callAPI(action,data,_retryCount+1);
+      }
+      setSyncStatus('er');
+      throw new Error('Invalid/incomplete response from server for "'+action+'"');
+    }
     if(json.error){
       // Only retry errors that look like a transient transport-level
       // glitch (e.g. the request's action came through blank/corrupted
@@ -2648,7 +2682,7 @@ async function loadAppData(){
       function(){return callAPI('getDrivers');},
       function(){return callAPI('getVehicles');},
       function(){return callAPI('getUsers');},
-      function(){return callAPI('getPermits');},
+      function(){return callAPIPaged('getPermitsPaged', 300);},
       function(){return callAPI('getFuelRequests');},
       function(){return callAPI('getRoutes');},
       function(){return callAPI('getTruckFuelConfig');},

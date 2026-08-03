@@ -2422,7 +2422,7 @@ td,td *{font-size:13px!important;font-family:'Inter',sans-serif!important}
 <script>
 // AK TRANSPORT — TRIP MANAGEMENT SYSTEM — Phase 1 Foundation
 // Replace the API constant below with your deployed Apps Script URL
-const API = 'https://script.google.com/macros/s/AKfycby-cPNVHqkBPDOfpnjoZJOBEr56hF1CxfTLRHL4zyo1TqUXg5c7ehhr-aI9DcAzIvm0IA/exec';
+const API = 'https://script.google.com/macros/s/AKfycbwVDsPb4bksytYxtTRNLR-vpZ8LhvvWUq4giKrni1gdbuCQfqH6q6nFDROxKlgjpxbL6Q/exec';
 
 var CURRENT_USER=null,SETTINGS={},ROUTES=[],TRUCK_FUEL=[],PERMIT_RATES=[],TRANSPORT_RATES=[],
     RELEASES=[],TRIPS=[],PERMITS=[],RENEWAL_REQS=[],AGENT_ACCOUNTS=[],AGENT_EXPENSES=[],
@@ -2666,7 +2666,7 @@ async function loadAppData(){
       function(){return callAPI('getDeductions');},
       function(){return callAPI('getDeductionPayments');}
     ];
-    var rs=await _runInBatches(criticalFns, 5);
+    var rs=await Promise.allSettled(criticalFns.map(function(fn){return fn();}));
     SETTINGS  = rs[0].status==='fulfilled' ? (rs[0].value.settings||{}) : {};
     RELEASES  = rs[1].status==='fulfilled' ? (rs[1].value.records||[]) : [];
     TRIPS     = rs[2].status==='fulfilled' ? (rs[2].value.records||[]) : [];
@@ -2733,7 +2733,7 @@ async function loadAppData(){
       function(){return callAPI('getOlderReleases',{beforeDate:_recentCutoffStr});},
       function(){return callAPI('getOlderTrips',{beforeDate:_recentCutoffStr});}
     ];
-    var rs2=await _runInBatches(secondaryFns, 5);
+    var rs2=await Promise.allSettled(secondaryFns.map(function(fn){return fn();}));
     AGENT_ACCOUNTS   = rs2[0].status==='fulfilled'  ? (rs2[0].value.records||[]) : [];
     AGENT_EXPENSES   = rs2[1].status==='fulfilled'  ? (rs2[1].value.records||[]) : [];
     INVOICES         = rs2[2].status==='fulfilled'  ? (rs2[2].value.records||[]) : [];
@@ -2773,10 +2773,20 @@ var _loadingReloadTimer=null;
 function show_loading(show,msg){
   var el=document.getElementById('loading');if(!el)return;
   el.style.display=show?'flex':'none';
-  if(msg){var lt=document.getElementById('loadtext');if(lt)lt.textContent=msg;}
+  var lt=document.getElementById('loadtext');
+  if(msg&&lt)lt.textContent=msg;
   var reloadBtn=document.getElementById('loading-reload-btn');
   if(_loadingReloadTimer){clearTimeout(_loadingReloadTimer);_loadingReloadTimer=null;}
+  // Cycle through progress messages so the screen visibly shows what's
+  // happening rather than sitting on one static line (same pattern as
+  // Workshop, with Trips-specific wording).
+  if(window._loadMsgTimer){clearInterval(window._loadMsgTimer);window._loadMsgTimer=null;}
   if(show){
+    var msgs=['Connecting to database...','Loading releases & trips...','Loading permits...','Loading driver accounts...','Loading settings...','Almost ready...'];
+    var i=0;
+    window._loadMsgTimer=setInterval(function(){
+      i++; if(i<msgs.length&&lt) lt.textContent=msgs[i];
+    },900);
     if(reloadBtn) reloadBtn.style.display='none';
     _loadingReloadTimer=setTimeout(function(){ if(reloadBtn) reloadBtn.style.display='inline-block'; },15000);
   } else {
@@ -5085,11 +5095,21 @@ async function saveAllSettings(){
 // ── LOGIN ──
 async function initLogin(){
   try{var saved=sessionStorage.getItem('ak_trip_user');if(saved){var user=JSON.parse(saved);if(user&&user.username){CURRENT_USER=user;afterLogin(user);return;}}}catch(e){}
-  // The login form itself doesn't need any data to be usable - the
-  // user list is only fetched the moment "Sign In" is clicked, so
-  // there's nothing to wait for here at all.
-  var statusEl=document.getElementById('aklgstatus');
-  if(statusEl) statusEl.textContent='';
+  // Load ONLY users - fast, needed for login (same pattern as Workshop)
+  try{
+    var r=await callAPI('getUsers');
+    if(r&&r.records&&r.records.length>0) USERS=r.records;
+  }catch(e){}
+  var loginStatus=document.getElementById('aklgstatus');
+  if(loginStatus){
+    if(USERS.length>0){
+      loginStatus.style.color='#16a34a';
+      loginStatus.textContent='\u2705 Ready - sign in to continue';
+    } else {
+      loginStatus.style.color='#dc2626';
+      loginStatus.textContent='\u26a0\ufe0f No users found. Contact admin.';
+    }
+  }
 }
 var _speculativeLoadPromise = null;
 async function doSignIn(){
@@ -9459,8 +9479,20 @@ async function saveAllSettings(){
 // ── LOGIN ──
 async function initLogin(){
   try{var saved=sessionStorage.getItem('ak_trip_user');if(saved){var user=JSON.parse(saved);if(user&&user.username){CURRENT_USER=user;afterLogin(user);return;}}}catch(e){}
-  var statusEl=document.getElementById('aklgstatus');
-  if(statusEl) statusEl.textContent='';
+  try{
+    var r=await callAPI('getUsers');
+    if(r&&r.records&&r.records.length>0) USERS=r.records;
+  }catch(e){}
+  var loginStatus=document.getElementById('aklgstatus');
+  if(loginStatus){
+    if(USERS.length>0){
+      loginStatus.style.color='#16a34a';
+      loginStatus.textContent='\u2705 Ready - sign in to continue';
+    } else {
+      loginStatus.style.color='#dc2626';
+      loginStatus.textContent='\u26a0\ufe0f No users found. Contact admin.';
+    }
+  }
 }
 async function afterLogin(user){
   document.getElementById('aklg').style.display='none';document.getElementById('mainlayout').style.display='flex';

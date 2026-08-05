@@ -8,6 +8,80 @@
 <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Outfit:wght@600;700;800;900&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
 <link href="https://cdnjs.cloudflare.com/ajax/libs/tom-select/2.3.1/css/tom-select.min.css" rel="stylesheet">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/tom-select/2.3.1/js/tom-select.complete.min.js"></script>
+<!-- Firebase SDK (compat build - works without a bundler) -->
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-database-compat.js"></script>
+<script>
+  var _fbDb = null;
+  var _fbInitAttempted = false;
+  var _fbReadyPromise = null;
+
+  function _fbInit() {
+    if (_fbReadyPromise) return _fbReadyPromise;
+    _fbReadyPromise = new Promise(function(resolve) {
+      function tryInit() {
+        if (typeof firebase !== 'undefined') {
+          try {
+            if (!firebase.apps.length) {
+              firebase.initializeApp({
+                apiKey: "AIzaSyDOaiVxGrbsR7FTIUciEdB1YNmRRnZZpDo",
+                authDomain: "ak-trip-system.firebaseapp.com",
+                databaseURL: "https://ak-trip-system-default-rtdb.europe-west1.firebasedatabase.app",
+                projectId: "ak-trip-system",
+                storageBucket: "ak-trip-system.firebasestorage.app",
+                messagingSenderId: "226821851271",
+                appId: "1:226821851271:web:8e1e58e0ffa71234a29022"
+              });
+            }
+            _fbDb = firebase.database();
+            resolve(true);
+          } catch(e) {
+            console.warn('Firebase init failed:', e.message);
+            resolve(false);
+          }
+        } else {
+          // SDK not yet loaded - wait 100ms and retry (max 3s)
+          if (!tryInit._attempts) tryInit._attempts = 0;
+          tryInit._attempts++;
+          if (tryInit._attempts < 30) {
+            setTimeout(tryInit, 100);
+          } else {
+            console.warn('Firebase SDK failed to load after 3s');
+            resolve(false);
+          }
+        }
+      }
+      tryInit();
+    });
+    return _fbReadyPromise;
+  }
+
+  // Initialize as early as possible
+  _fbInit();
+
+  document.addEventListener('DOMContentLoaded', _fbInit);
+
+  function fbRead(path) {
+    return _fbInit().then(function() {
+      if (!_fbDb) return { records: [] };
+      return _fbDb.ref('/ak_trips' + path).once('value').then(function(snap) {
+        var val = snap.val();
+        if (!val) return { records: [] };
+        return { records: Object.values(val) };
+      });
+    });
+  }
+
+  function fbListen(path, callback) {
+    _fbInit().then(function() {
+      if (!_fbDb) return;
+      _fbDb.ref('/ak_trips' + path).on('value', function(snap) {
+        var val = snap.val();
+        callback(val ? Object.values(val) : []);
+      });
+    });
+  }
+</script>
 <style>
 :root{--bg:#f5f5f7;--s1:#ffffff;--s2:#f0f0f4;--br:#d2d2d7;--ac:#0a2d6e;--ac2:#1a4fa0;--hi:#0071e3;--tx:#1d1d1f;--t2:#515154;--t3:#86868b}
 *{box-sizing:border-box;margin:0;padding:0}
@@ -2393,7 +2467,7 @@ td,td *{font-size:13px!important;font-family:'Inter',sans-serif!important}
 <script>
 // AK TRANSPORT — TRIP MANAGEMENT SYSTEM — Phase 1 Foundation
 // Replace the API constant below with your deployed Apps Script URL
-const API = 'https://script.google.com/macros/s/AKfycbxeAPmNnEZBfh6lpo28xIPRlIxyLpsouSOPeraoRBLZpVvNF4z-anlQ1IPMVrof3OpY7g/exec';
+const API = 'https://script.google.com/macros/s/AKfycbxRc68XDSHAOqxQQnwcSYeZKlkL0mOUnnyZi7PuQXjTLIpjeXUxYAoYuYUBmqCMm6jSdg/exec';
 
 var CURRENT_USER=null,SETTINGS={},ROUTES=[],TRUCK_FUEL=[],PERMIT_RATES=[],TRANSPORT_RATES=[],
     RELEASES=[],TRIPS=[],PERMITS=[],RENEWAL_REQS=[],AGENT_ACCOUNTS=[],AGENT_EXPENSES=[],
@@ -2697,27 +2771,40 @@ var _loadingNow = {};  // dataset key -> in-flight promise (prevents double-fetc
 // second, redundant one.
 // How to fetch each dataset, and where to put it.
 var _dataLoaders = {
-  releases:   function(){ return callAPI('getRecentReleases',{sinceDate:_lazyCutoff()}).then(function(r){ RELEASES = (r&&r.records)||[]; }); },
-  trips:      function(){ return callAPI('getRecentTrips',{sinceDate:_lazyCutoff()}).then(function(r){ TRIPS = (r&&r.records)||[]; }); },
+  releases:   function(){ return fbRead('/releases').then(function(r){ RELEASES = r.records; _loaded.releases = true; }); },
+  trips:      function(){ return fbRead('/trips').then(function(r){ TRIPS = r.records; _loaded.trips = true; }); },
   permits:    function(){ return _loadPermitsEager(); },
-  fuelreq:    function(){ return callAPI('getFuelRequests').then(function(r){ FUEL_REQUESTS = (r&&r.records)||[]; }); },
-  refdata:    function(){ return callAPI('getRefDataBundle').then(function(r){
-                  if(!r) return;
-                  ROUTES=r.routes||[]; TRUCK_FUEL=r.truckFuel||[];
-                  PERMIT_RATES=r.permitRates||[]; TRANSPORT_RATES=r.transportRates||[];
-                  DRIVER_OPENING_BALANCES=r.openingBalances||[];
+  fuelreq:    function(){ return fbRead('/fuelRequests').then(function(r){ FUEL_REQUESTS = r.records; }); },
+  refdata:    function(){ return Promise.all([
+                  fbRead('/refdata/routes'),
+                  fbRead('/refdata/truckFuel'),
+                  fbRead('/refdata/permitRates'),
+                  fbRead('/refdata/transportRates'),
+                  fbRead('/refdata/openingBalances')
+                ]).then(function(res){
+                  ROUTES                  = res[0].records;
+                  TRUCK_FUEL              = res[1].records;
+                  PERMIT_RATES            = res[2].records;
+                  TRANSPORT_RATES         = res[3].records;
+                  DRIVER_OPENING_BALANCES = res[4].records;
                 }); },
-  ledger:     function(){ return callAPI('getLedgerBundle').then(function(r){
-                  if(!r) return;
-                  FUEL_LOSS=r.fuelLoss||[]; SHORTAGE_PMTS=r.shortagePmts||[];
-                  DEDUCTIONS=r.deductions||[]; DEDUCTION_PMTS=r.deductionPmts||[];
+  ledger:     function(){ return Promise.all([
+                  fbRead('/deductions'),
+                  fbRead('/deductionPmts'),
+                  fbRead('/shortagePmts'),
+                  fbRead('/fuelLoss')
+                ]).then(function(res){
+                  DEDUCTIONS    = res[0].records;
+                  DEDUCTION_PMTS= res[1].records;
+                  SHORTAGE_PMTS = res[2].records;
+                  FUEL_LOSS     = res[3].records;
                 }); },
-  invoices:   function(){ return callAPI('getInvoices').then(function(r){ INVOICES = (r&&r.records)||[]; }); },
-  agents:     function(){ return Promise.allSettled([callAPI('getAgentAccounts'),callAPI('getAgentExpenses')]).then(function(a){
-                  AGENT_ACCOUNTS = (a[0].status==='fulfilled'&&a[0].value.records)||[];
-                  AGENT_EXPENSES = (a[1].status==='fulfilled'&&a[1].value.records)||[];
+  invoices:   function(){ return fbRead('/invoices').then(function(r){ INVOICES = r.records; }); },
+  agents:     function(){ return Promise.all([fbRead('/agentAccounts'),fbRead('/agentExpenses')]).then(function(a){
+                  AGENT_ACCOUNTS = a[0].records;
+                  AGENT_EXPENSES = a[1].records;
                 }); },
-  renewals:   function(){ return callAPI('getRenewalReqs').then(function(r){ RENEWAL_REQS = (r&&r.records)||[]; }); }
+  renewals:   function(){ return fbRead('/renewalReqs').then(function(r){ RENEWAL_REQS = r.records; }); }
 };
 
 function _lazyCutoff(){
@@ -2981,7 +3068,7 @@ function _clearOldCacheVersions() {
       }
       // Also clear the old single-blob key from the original v1 design
       if (k === 'ak_trips_startup_cache_v1') keysToRemove.push(k);
-      // Also clear the old permits_page1 key from an earlier design
+      if (k === 'ak_trip_lastview') keysToRemove.push(k);
       if (k === _cacheKey('permits_page1')) keysToRemove.push(k);
     }
     keysToRemove.forEach(function(k){ try { localStorage.removeItem(k); } catch(e){} });
@@ -2992,12 +3079,12 @@ _clearOldCacheVersions();
 function _saveDatasetCache(datasetName, rawData) {
   try {
     var spec = CACHE_DATASETS[datasetName];
-    if (!spec) return;
+    if (!spec) { console.warn('Cache: no spec for', datasetName); return; }
     var payload = JSON.stringify({ _at: Date.now(), data: spec.save(rawData) });
     localStorage.setItem(_cacheKey(datasetName), payload);
+    console.log('Cache saved:', _cacheKey(datasetName), Math.round(payload.length/1024)+'KB');
   } catch(e) {
-    // Storage full or unavailable - fail silently, cache is an
-    // optimisation not a requirement.
+    console.warn('Cache save FAILED for', datasetName, ':', e.message);
   }
 }
 
@@ -3073,44 +3160,19 @@ async function _loadPermitsEager() {
   if (_loaded.permits) return;
   if (_loadingNow.permits) return _loadingNow.permits;
 
-  var promise = (async function(){
-    var maxAttempts = 3;
-    for (var attempt = 0; attempt < maxAttempts; attempt++) {
-      try {
-        var ctrl = new AbortController();
-        var timer = setTimeout(function(){ ctrl.abort(); }, 45000);
-        var res = await fetch(API, {
-          method: 'POST',
-          body: JSON.stringify({action:'getPermits'}),
-          headers: {'Content-Type':'text/plain'},
-          signal: ctrl.signal
-        });
-        clearTimeout(timer);
-        var text = await res.text();
-        var json;
-        try { json = JSON.parse(text); } catch(e) { json = null; }
-        if (json && !json.error && json.records) {
-          PERMITS = json.records;
-          _loaded.permits = true;
-          delete _loadingNow.permits;
-          _saveDatasetCache('permits', PERMITS);
-          try { updateBadges(); } catch(e){}
-          if (typeof currentView !== 'undefined' && currentView === 'permits') {
-            try { renderPermits(); } catch(e){}
-          }
-          return;
-        }
-        if (attempt < maxAttempts - 1) {
-          await new Promise(function(r){ setTimeout(r, 600*(attempt+1)); });
-        }
-      } catch(e) {
-        if (attempt < maxAttempts - 1) {
-          await new Promise(function(r){ setTimeout(r, 600*(attempt+1)); });
-        }
-      }
-    }
+  var promise = fbRead('/permits').then(function(r) {
+    PERMITS = r.records;
+    _loaded.permits = true;
     delete _loadingNow.permits;
-  })();
+    _saveDatasetCache('permits', PERMITS);
+    try { updateBadges(); } catch(e){}
+    if (typeof currentView !== 'undefined' && currentView === 'permits') {
+      try { renderPermits(); } catch(e){}
+    }
+  }).catch(function(e) {
+    delete _loadingNow.permits;
+    throw e;
+  });
 
   _loadingNow.permits = promise;
   return promise;
@@ -3153,24 +3215,52 @@ function _pickLandingView(){
 }
 
 function _startBackgroundSync(){
-  if (_bgSyncTimer) return; // already running - callers may invoke this more than once per session, harmless
-  _bgSyncTimer = setInterval(async function(){
-    var _cutoff = new Date(); _cutoff.setDate(_cutoff.getDate()-90);
-    var _cutoffStr = _cutoff.toISOString().split('T')[0];
-    try {
-      var bundle = await callAPI('getTripsStartupBundle', {sinceDate:_cutoffStr});
-      _saveLocalStartupCache(bundle);
-      _applyStartupBundle(bundle, {isFirstPaint:false});
-      _bgSyncHasSucceeded = true; // Gap 4: suppress "saved from X ago" toast after first successful sync
-      if (_bgSyncWasOffline) { _bgSyncWasOffline = false; toast('Back online \u2713','ok'); }
-    } catch(e) {
-      // Silent on purpose - a single missed poll isn't worth alarming
-      // anyone over, the next one 30s later just tries again. Only
-      // surfaced once we've actually recovered from a stretch of
-      // failures (the toast above) - same UX Workshop uses.
+  if (_bgSyncTimer) return;
+  // Replace polling with Firebase real-time listener.
+  // Fires immediately with current data, then again instantly
+  // whenever ANY connected user makes a change - no 30s delay.
+  _bgSyncTimer = true; // mark as started so this only runs once
+  if (!_fbDb) return; // Firebase not available, skip
+
+  // Listen to the collections that change most frequently
+  var _listenPaths = [
+    ['/trips',        function(v){ if(v){ TRIPS = Object.values(v); } }],
+    ['/releases',     function(v){ if(v){ RELEASES = Object.values(v); _loaded.releases = true; } }],
+    ['/permits',      function(v){ if(v){ PERMITS = Object.values(v); _loaded.permits = true; } }],
+    ['/fuelRequests', function(v){ if(v){ FUEL_REQUESTS = Object.values(v); } }],
+    ['/renewalReqs',  function(v){ if(v){ RENEWAL_REQS = Object.values(v); } }]
+  ];
+
+  _listenPaths.forEach(function(pair) {
+    _fbDb.ref('/ak_trips' + pair[0]).on('value', function(snap) {
+      try {
+        pair[1](snap.val());
+        updateBadges();
+        // Re-render the current view in place if it uses this data
+        var _renders = {
+          releases:renderReleases, alltrips:renderTrips, waitingload:renderTrips,
+          intransit:renderTrips, completed:renderTrips, shortage:renderShortage,
+          deductions:renderDeductions, permits:renderPermits, driveraccts:renderDriverAccounts,
+          agents:renderAgents, invoicing:renderInvoicing, fuel:renderFuelRequests,
+          reqforms:renderFuelRequests, budget:renderBudget, settings:renderSettings
+        };
+        if (currentView && _renders[currentView] && !document.querySelector('.overlay:not(.hidden)')) {
+          var _scrollY = window.scrollY;
+          try { _renders[currentView](); } catch(e){}
+          window.scrollTo(0, _scrollY);
+        }
+        setSyncStatus('on');
+        _bgSyncWasOffline = false;
+      } catch(e) {
+        _bgSyncWasOffline = true;
+        setSyncStatus('er');
+      }
+    }, function(err) {
       _bgSyncWasOffline = true;
-    }
-  }, TRIPS_BACKGROUND_SYNC_INTERVAL_MS);
+      setSyncStatus('er');
+      Logger && Logger.log && Logger.log('Firebase listener error: ' + err.message);
+    });
+  });
 }
 
 // Applies a startup bundle (from cache OR a live fetch) to app state
@@ -3251,6 +3341,9 @@ function _applyStartupBundle(bundle, opts){
 }
 
 async function loadAppData(){
+  // Wait for Firebase to be ready before reading data
+  await _fbInit();
+
   var _recentCutoff = new Date(); _recentCutoff.setDate(_recentCutoff.getDate()-90);
   var _recentCutoffStr = _recentCutoff.toISOString().split('T')[0];
 
@@ -3306,19 +3399,31 @@ async function loadAppData(){
     // finishing (or failing) before the next starts, matching
     // Workshop's loadRecords() instead of retrying while other
     // requests may still be in flight.
+    // TIER 1 — read core startup data directly from Firebase.
+    // No Apps Script involved - Firebase responds in under 100ms,
+    // no cold start, no macros/echo redirect, no 404 risk.
     var _startupBundle = null;
     var _startupError = null;
-    for (var _attempt = 1; _attempt <= 3; _attempt++) {
-      try {
-        _startupBundle = await callAPI('getTripsStartupBundle', {sinceDate:_recentCutoffStr}, 0, 0);
-        _startupError = null;
-        break;
-      } catch (e) {
-        _startupError = e;
-        if (_attempt < 3) {
-          await new Promise(function(r){ setTimeout(r, _attempt*3000); });
-        }
-      }
+    try {
+      if (!_fbDb) throw new Error('Firebase not initialized');
+      var _fbResults = await Promise.all([
+        _fbDb.ref('/ak_trips/settings').once('value'),
+        _fbDb.ref('/ak_trips/drivers').once('value'),
+        _fbDb.ref('/ak_trips/vehicles').once('value'),
+        _fbDb.ref('/ak_trips/users').once('value'),
+        _fbDb.ref('/ak_trips/releases').once('value'),
+        _fbDb.ref('/ak_trips/permits').once('value')
+      ]);
+      _startupBundle = {
+        settings: _fbResults[0].val() || {},
+        drivers:  _fbResults[1].val() ? Object.values(_fbResults[1].val()) : [],
+        vehicles: _fbResults[2].val() ? Object.values(_fbResults[2].val()) : [],
+        users:    _fbResults[3].val() ? Object.values(_fbResults[3].val()) : [],
+        releases: _fbResults[4].val() ? Object.values(_fbResults[4].val()) : [],
+        permits:  _fbResults[5].val() ? Object.values(_fbResults[5].val()) : []
+      };
+    } catch(e) {
+      _startupError = e;
     }
 
     if (_startupBundle) {
@@ -3355,7 +3460,6 @@ async function loadAppData(){
   // arrives, badges and whatever view is currently open just refresh
   // quietly to reflect it.
   try{
-    if (bgBadge) bgBadge.style.display = 'flex';
     var secondaryFns=[
       function(){return callAPI('getAgentAccounts');},
       function(){return callAPI('getAgentExpenses');},
@@ -3383,7 +3487,6 @@ async function loadAppData(){
     var _failedSecondary = rs2.map(function(x,i){ return x.status==='rejected' ? _secondaryNames[i] : null; }).filter(Boolean);
     if (_failedSecondary.length) toast('Failed to load: '+_failedSecondary.join(', ')+' — try Refresh','er');
     updateBadges();
-    if (bgBadge) bgBadge.style.display = 'none';
     // Quietly refresh whatever view is currently open so it picks up
     // this data (e.g. Permits/Fuel Requests) - but only if it's safe to:
     // skip it if the user has a modal/form open right now (don't
@@ -3408,7 +3511,6 @@ async function loadAppData(){
       window.scrollTo(0, _scrollY);
     }
   }catch(e){
-    if (bgBadge2) bgBadge2.style.display = 'none';
     /* secondary data is non-critical - fail silently otherwise */
   }
   // Post-load extras
@@ -4786,13 +4888,60 @@ async function doSignIn(){
 
   var result;
   try{
-    // Credentials are verified entirely server-side now - the browser
-    // never receives the user roster or anyone's password. One
-    // controlled retry only (maxRetries=1); login shouldn't silently
-    // turn into several attempts under poor conditions.
-    result=await callAPI('loginUser',{username:u,password:p},0,1);
+    // Wait for Firebase to be ready before attempting login
+    await _fbInit();
+
+    // Try Firebase-direct login first — no Apps Script, no redirect,
+    // no 404 risk. Reads the user record from Firebase, hashes the
+    // typed password with SHA-256 (built into every modern browser),
+    // and compares to the stored hash. Only falls back to Apps Script
+    // if Firebase isn't available or the user has no hash yet.
+    var _fbLoginOk = false;
+    if (_fbDb) {
+      try {
+        var _fbUsersSnap = await _fbDb.ref('/ak_trips/users').once('value');
+        var _fbUsers = _fbUsersSnap.val() || {};
+        var _fbUser = Object.values(_fbUsers).find(function(usr){
+          return String(usr.username||'').trim().toLowerCase() === u.toLowerCase();
+        });
+        if (_fbUser && _fbUser.passwordHash) {
+          // Hash the typed password using the browser's built-in crypto
+          var _enc = new TextEncoder();
+          var _hashBuf = await crypto.subtle.digest('SHA-256', _enc.encode(p));
+          var _hashHex = Array.from(new Uint8Array(_hashBuf))
+            .map(function(b){ return ('0'+b.toString(16)).slice(-2); }).join('');
+          if (_hashHex === _fbUser.passwordHash) {
+            if (String(_fbUser.status||'active').toLowerCase() === 'inactive') {
+              errEl.textContent='Account inactive. Contact admin.';
+              LOGIN_IN_PROGRESS=false;
+              if(btn){btn.disabled=false;btn.textContent='Sign In';}
+              return;
+            }
+            result = { ok: true, user: _fbUser };
+            _fbLoginOk = true;
+          } else {
+            // Wrong password — fail immediately, no Apps Script fallback
+            errEl.textContent='Invalid username or password.';
+            LOGIN_IN_PROGRESS=false;
+            if(btn){btn.disabled=false;btn.textContent='Sign In';}
+            return;
+          }
+        }
+      } catch(fbErr) {
+        console.warn('Firebase login attempt failed, falling back to Apps Script:', fbErr.message);
+      }
+    }
+    // Fallback: Apps Script (first login before hash exists, or Firebase unavailable)
+    if (!_fbLoginOk) {
+      _apiQueue.max = 3;
+      try {
+        result = await callAPI('loginUser',{username:u,password:p},0,3);
+      } finally {
+        _apiQueue.max = 2;
+      }
+    }
   }catch(e){
-    errEl.textContent=e.message||'⚠️ Cannot connect — check your Apps Script URL';
+    errEl.textContent=e.message||'⚠️ Cannot connect — check your connection and try again';
     LOGIN_IN_PROGRESS=false;
     if(btn){btn.disabled=false;btn.textContent='Sign In';}
     return;

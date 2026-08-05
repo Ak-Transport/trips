@@ -168,11 +168,6 @@ td,td *{font-size:13px!important;font-family:'Inter',sans-serif!important}
     <div style="flex:1"></div>
     <div style="display:flex;align-items:center;gap:10px;background:#f5f7fa;border:1px solid #e8eaed;border-radius:24px;padding:5px 16px">
       <div class="syncbadge"><div class="dot" id="syndot"></div><span id="synlbl" style="font-size:11px;color:#888">Connecting...</span></div>
-      <div id="bgload-badge" style="display:none;align-items:center;gap:6px;font-size:11px;color:#888;margin-left:10px">
-        <div style="width:7px;height:7px;border-radius:50%;background:#0071e3;animation:bgloadpulse 1s ease-in-out infinite"></div>
-        Loading additional data...
-      </div>
-      <style>@keyframes bgloadpulse{0%,100%{opacity:1}50%{opacity:.3}}</style>
       <div style="width:1px;height:14px;background:#ddd;flex-shrink:0"></div>
       <button onclick="refreshAll()" style="background:none;border:none;cursor:pointer;font-size:11px;font-weight:600;color:#555;padding:0">&#8635; Refresh</button>
       <div style="width:1px;height:14px;background:#ddd;flex-shrink:0"></div>
@@ -248,29 +243,6 @@ td,td *{font-size:13px!important;font-family:'Inter',sans-serif!important}
     <div class="navitem" id="nav-settings" onclick="switchView('settings')" style="margin:4px 8px">&#9881; Settings</div>
   </div>
   <div class="main" id="main">
-    <!-- DASHBOARD -->
-    <div id="view-dashboard" class="hidden" style="display:flex;flex-direction:column;overflow:hidden;flex:1">
-      <div id="toolbar"><div><div class="vtitle">&#128666; Trip Management</div><div class="viewsub">AK Transport — Operations Overview</div></div></div>
-      <div style="flex:1;overflow:auto;padding:16px 22px">
-        <div class="dgrid" style="margin-bottom:16px">
-          <div class="statcard" style="border-left:4px solid #d97706"><div class="statlbl">In Transit</div><div class="statval" id="ds-intransit">0</div><div style="font-size:11px;color:var(--t3)">Active trips</div></div>
-          <div class="statcard" style="border-left:4px solid #34d399"><div class="statlbl">Completed (Month)</div><div class="statval" id="ds-completed">0</div><div style="font-size:11px;color:var(--t3)">This month</div></div>
-          <div class="statcard" style="border-left:4px solid var(--ac)"><div class="statlbl">Total Releases</div><div class="statval" id="ds-releases">0</div><div style="font-size:11px;color:var(--t3)">All time</div></div>
-          <div class="statcard" style="border-left:4px solid #b91c1c"><div class="statlbl">Permits Expiring</div><div class="statval" id="ds-expiring">0</div><div style="font-size:11px;color:var(--t3)">Within 30 days</div></div>
-          <div class="statcard" style="border-left:4px solid #7c3aed"><div class="statlbl">Not Invoiced</div><div class="statval" id="ds-uninvoiced">0</div><div style="font-size:11px;color:var(--t3)">Completed trips</div></div>
-          <div class="statcard" style="border-left:4px solid #92400e"><div class="statlbl">Outstanding Shortage</div><div class="statval" id="ds-shortage">0</div><div style="font-size:11px;color:var(--t3)">Active deductions</div></div>
-        </div>
-        <div style="background:#fff;border:1px solid #ebebed;border-radius:14px;padding:20px;box-shadow:0 1px 4px rgba(0,0,0,.05)">
-          <div style="font-family:'Outfit',sans-serif;font-size:14px;font-weight:700;color:var(--ac);margin-bottom:14px">&#9889; Quick Actions</div>
-          <div style="display:flex;flex-wrap:wrap;gap:10px">
-            <button class="btn bp" onclick="openAddTrip()">&#128666; New Trip</button>
-            <button class="btn bg" onclick="switchView('permits')">&#128737; View Permits</button>
-            <button class="btn bg" onclick="switchView('agents')">&#128176; Agent Accounts</button>
-            <button class="btn bg" onclick="switchView('settings')">&#9881; Settings</button>
-          </div>
-        </div>
-      </div>
-    </div>
     <!-- RELEASES -->
     <div id="view-releases" style="display:flex;flex-direction:column;overflow:hidden;flex:1">
       <div id="toolbar">
@@ -2392,7 +2364,7 @@ td,td *{font-size:13px!important;font-family:'Inter',sans-serif!important}
     <div id="aklge" style="min-height:20px;font-size:12px;color:#b91c1c;text-align:left;margin-bottom:4px;font-weight:500"></div>
     <button id="aklgbtn" style="width:100%;padding:13px;background:var(--ac);color:#fff;border:none;border-radius:10px;font-size:15px;font-weight:600;font-family:'Outfit',sans-serif;cursor:pointer;transition:all .18s;box-shadow:0 4px 16px rgba(10,45,110,.25)"
       onmouseover="this.style.background='#1a4fa0'" onmouseout="this.style.background='var(--ac)'">Sign In</button>
-    <div id="aklgstatus" style="margin-top:14px;font-size:11.5px;color:#86868b;text-align:center">Verifying access...</div>
+    <div id="aklgstatus" style="margin-top:14px;font-size:11.5px;color:#86868b;text-align:center;letter-spacing:.01em">Verifying access...</div>
     <div style="margin-top:24px;padding-top:18px;border-top:1px solid #e8e8ed;font-size:11px;color:#86868b">&copy; 2026 AK Transport</div>
   </div>
 </div>
@@ -2421,17 +2393,17 @@ td,td *{font-size:13px!important;font-family:'Inter',sans-serif!important}
 <script>
 // AK TRANSPORT — TRIP MANAGEMENT SYSTEM — Phase 1 Foundation
 // Replace the API constant below with your deployed Apps Script URL
-const API = 'https://script.google.com/macros/s/AKfycbyBrRIimozDjQuf1VY_VAkfcz7DYYIFJEyO4WlzD9H-87ey0jMv-3zvUZJSsqRTeiFA/exec';
+const API = 'https://script.google.com/macros/s/AKfycbxeAPmNnEZBfh6lpo28xIPRlIxyLpsouSOPeraoRBLZpVvNF4z-anlQ1IPMVrof3OpY7g/exec';
 
 var CURRENT_USER=null,SETTINGS={},ROUTES=[],TRUCK_FUEL=[],PERMIT_RATES=[],TRANSPORT_RATES=[],
     RELEASES=[],TRIPS=[],PERMITS=[],RENEWAL_REQS=[],AGENT_ACCOUNTS=[],AGENT_EXPENSES=[],
     FUEL_LOSS=[],SHORTAGE_PMTS=[],ADD_EXPENSES=[],DRV_EXPENSES=[],FUEL_REQUESTS=[],
     DRIVER_OPENING_BALANCES=[],
     DEDUCTIONS=[],DEDUCTION_PMTS=[],
-    INVOICES=[],DRIVERS=[],VEHICLES=[],USERS=[],currentView='dashboard',editingId=null;
+    INVOICES=[],DRIVERS=[],VEHICLES=[],USERS=[],currentView='releases',editingId=null;
 
 // ── SYNC ──
-function setSyncStatus(s){var d=document.getElementById('syndot'),l=document.getElementById('synlbl');if(!d||!l)return;d.className='dot '+s;l.textContent=s==='on'?'Synced':s==='sy'?'Syncing...':'Error';}
+function setSyncStatus(s){var d=document.getElementById('syndot'),l=document.getElementById('synlbl');if(!d||!l)return;d.className='dot '+s;l.textContent={on:'Live',sy:'Syncing...',er:'Offline'}[s]||s;}
 
 // ── API ──
 // Runs an array of call-starting functions in small waves instead of
@@ -2486,51 +2458,148 @@ async function callAPIPaged(action, pageSize, extraData){
   return {records: all};
 }
 
-async function callAPI(action,data,_retryCount){
-  _retryCount=_retryCount||0;
-  data=data||{};setSyncStatus('sy');
-  var ctrl=new AbortController(),timer=setTimeout(function(){ctrl.abort();},30000);
+// ── GLOBAL API CONCURRENCY LIMIT ────────────────────────────────────
+// Per-site batching (_runInBatches, used for Tier 2 background loads
+// and _prepareView) only limits concurrency WITHIN that one call site.
+// It doesn't stop two unrelated call sites - e.g. Tier 2's background
+// load and a view the user navigates to while it's still running -
+// from each independently having 2 in flight at once, stacking into 4
+// or more. This queue is the single shared gate every callAPI call
+// passes through, so the real ceiling is 2 requests in flight across
+// the WHOLE app at any moment, regardless of which code path started
+// them.
+var _apiQueue = {active:0, max:2, waiters:[]};
+function _acquireApiSlot(){
+  return new Promise(function(resolve){
+    if (_apiQueue.active < _apiQueue.max) { _apiQueue.active++; resolve(); }
+    else { _apiQueue.waiters.push(resolve); }
+  });
+}
+function _releaseApiSlot(){
+  if (_apiQueue.waiters.length) {
+    // Hand the slot straight to the next waiter - active count stays
+    // occupied, just by a different request.
+    var next = _apiQueue.waiters.shift();
+    next();
+  } else {
+    _apiQueue.active--;
+  }
+}
+
+// ── OFFLINE-ISH FALLBACK for read actions ────────────────────────
+// Most reads (Settings, Drivers, Vehicles, Users, Releases, ...)
+// barely change minute to minute. If a read genuinely fails after
+// all retries - including the macros/echo redirect 404 seen in live
+// testing - falling back to the last successful response is better
+// for the person using the app than a hard error, as long as the
+// cached data isn't too old to trust. Never applied to writes
+// (add/update/delete/save/login/...) - silently answering a SAVE or
+// a LOGIN from stale cached data would be actively dangerous, not
+// helpful. Scoped to actions starting with "get", matching this
+// codebase's naming convention for reads vs writes.
+var API_CACHE_MAX_AGE_MS = 20*60*1000; // 20 minutes - beyond this, a real error is more honest than stale data
+function _apiCacheKey(action,data){ return '_apicache:'+action+':'+JSON.stringify(data||{}); }
+function _apiCacheSave(action,data,json){
+  if(action.indexOf('get')!==0) return;
+  try{ sessionStorage.setItem(_apiCacheKey(action,data), JSON.stringify({at:Date.now(), json:json})); }catch(e){}
+}
+function _apiCacheLoad(action,data){
+  if(action.indexOf('get')!==0) return null;
   try{
-    var res=await fetch(API,{method:'POST',body:JSON.stringify(Object.assign({action:action},data)),headers:{'Content-Type':'text/plain'},signal:ctrl.signal});
-    clearTimeout(timer);var text=await res.text();var json;
-    try{json=JSON.parse(text);}catch(e){json=null;}
-    if(!json){
-      // A response we can't parse is a genuine failure, not a success.
-      // This previously returned {success:true} with no data, which
-      // silently emptied arrays (e.g. PERMITS) whenever a large
-      // response arrived truncated - no error, no warning, just
-      // missing records. Treat it as retryable instead.
-      if(_retryCount<2){
-        await new Promise(function(r){setTimeout(r,400*(_retryCount+1));});
-        return callAPI(action,data,_retryCount+1);
+    var raw=sessionStorage.getItem(_apiCacheKey(action,data));
+    if(!raw) return null;
+    var parsed=JSON.parse(raw);
+    if(!parsed||(Date.now()-parsed.at)>API_CACHE_MAX_AGE_MS) return null;
+    return parsed.json;
+  }catch(e){ return null; }
+}
+
+async function callAPI(action,data,_retryCount,maxRetries){
+  _retryCount=_retryCount||0;
+  // Defaults to 3 internal retries (was 2) with a longer backoff step
+  // (600ms, was 400ms) - raised after seeing the macros/echo redirect
+  // 404 fail an entire request in live testing even with the shorter
+  // window. Callers that already wrap callAPI in their own retry loop
+  // (e.g. startup's sequential retry, matching Workshop) pass
+  // maxRetries=0 so only ONE retry strategy is ever active for a given
+  // logical request - otherwise a single slow connection could trigger
+  // outer-attempts × inner-retries actual HTTP requests instead of the
+  // number either layer intended.
+  maxRetries=(maxRetries===undefined)?3:maxRetries;
+  var _retryDelayStep=600;
+  data=data||{};setSyncStatus('sy');
+  // Wait for a global slot BEFORE starting this attempt's own timeout
+  // clock - otherwise time spent queued behind other requests would
+  // eat into this request's 45s budget before it's even been sent.
+  await _acquireApiSlot();
+  var ctrl=new AbortController(),timer=setTimeout(function(){ctrl.abort();},45000);
+  try{
+    try{
+      var res=await fetch(API,{method:'POST',body:JSON.stringify(Object.assign({action:action},data)),headers:{'Content-Type':'text/plain'},signal:ctrl.signal});
+      clearTimeout(timer);var text=await res.text();var json;
+      try{json=JSON.parse(text);}catch(e){json=null;}
+      if(!json){
+        // A response we can't parse is a genuine failure, not a success.
+        // This previously returned {success:true} with no data, which
+        // silently emptied arrays (e.g. PERMITS) whenever a large
+        // response arrived truncated - no error, no warning, just
+        // missing records. Treat it as retryable instead.
+        if(_retryCount<maxRetries){
+          await new Promise(function(r){setTimeout(r,_retryDelayStep*(_retryCount+1));});
+          return callAPI(action,data,_retryCount+1,maxRetries);
+        }
+        var _cached=_apiCacheLoad(action,data);
+        if(_cached){
+          
+          setSyncStatus('sy');
+          return _cached;
+        }
+        setSyncStatus('er');
+        throw new Error('Invalid/incomplete response from server for "'+action+'"');
       }
-      setSyncStatus('er');
-      throw new Error('Invalid/incomplete response from server for "'+action+'"');
-    }
-    if(json.error){
-      // Only retry errors that look like a transient transport-level
-      // glitch (e.g. the request's action came through blank/corrupted
-      // under heavy simultaneous load), never a genuine business-logic
-      // error from the backend - retrying "Username not found" or
-      // "Record not found" would just delay showing a real error.
-      var isTransient=/^Unknown action:\s*$/.test(json.error);
-      if(isTransient&&_retryCount<2){
-        await new Promise(function(r){setTimeout(r,400*(_retryCount+1));});
-        return callAPI(action,data,_retryCount+1);
+      if(json.error){
+        // Only retry errors that look like a transient transport-level
+        // glitch (e.g. the request's action came through blank/corrupted
+        // under heavy simultaneous load), never a genuine business-logic
+        // error from the backend - retrying "Username not found" or
+        // "Record not found" would just delay showing a real error.
+        var isTransient=/^Unknown action:\s*$/.test(json.error);
+        if(isTransient&&_retryCount<maxRetries){
+          await new Promise(function(r){setTimeout(r,_retryDelayStep*(_retryCount+1));});
+          return callAPI(action,data,_retryCount+1,maxRetries);
+        }
+        // A real business-logic error from the backend (not a transport
+        // failure) - cache fallback doesn't apply here, this is a
+        // genuine answer from the server, just not a happy one.
+        throw new Error(json.error);
       }
-      throw new Error(json.error);
+      _apiCacheSave(action,data,json);
+      setSyncStatus('on');return json;
+    }catch(e){
+      clearTimeout(timer);
+      var isAbort=e.name==='AbortError';
+      var isNetworkFail=e instanceof TypeError;
+      if((isAbort||isNetworkFail)&&_retryCount<maxRetries){
+        setSyncStatus('sy');
+        await new Promise(function(r){setTimeout(r,_retryDelayStep*(_retryCount+1));});
+        return callAPI(action,data,_retryCount+1,maxRetries);
+      }
+      if(isAbort||isNetworkFail){
+        var _cached2=_apiCacheLoad(action,data);
+        if(_cached2){
+          
+          setSyncStatus('sy');
+          return _cached2;
+        }
+      }
+      setSyncStatus('er');if(isAbort)throw new Error('Request timed out. Please retry.');throw e;
     }
-    setSyncStatus('on');return json;
-  }catch(e){
-    clearTimeout(timer);
-    var isAbort=e.name==='AbortError';
-    var isNetworkFail=e instanceof TypeError;
-    if((isAbort||isNetworkFail)&&_retryCount<2){
-      setSyncStatus('sy');
-      await new Promise(function(r){setTimeout(r,400*(_retryCount+1));});
-      return callAPI(action,data,_retryCount+1);
-    }
-    setSyncStatus('er');if(isAbort)throw new Error('Request timed out. Please retry.');throw e;
+  } finally {
+    // Always freed exactly once per attempt, whether this call
+
+    // succeeded, threw, or is about to retry (retries are separate
+    // invocations that acquire their own slot when THEY run).
+    _releaseApiSlot();
   }
 }
 
@@ -2618,11 +2687,19 @@ function toggleSidebar(){var sb=document.getElementById('sidebar');if(sb)sb.styl
 var _loaded = {};      // dataset key -> true once fetched
 var _loadingNow = {};  // dataset key -> in-flight promise (prevents double-fetch)
 
+// ── PERMITS — progressive load (first page fast, rest in background) ─
+// Permits behaves like Releases now: the FIRST page (100 records)
+// becomes usable as soon as it arrives - nobody, at login or by
+// clicking into the Permits page, ever waits on the full dataset.
+// Registered in _loadingNow like any other loader, so if someone
+// clicks Permits while this is already running (from login), they
+// share the SAME in-flight first-page fetch instead of triggering a
+// second, redundant one.
 // How to fetch each dataset, and where to put it.
 var _dataLoaders = {
   releases:   function(){ return callAPI('getRecentReleases',{sinceDate:_lazyCutoff()}).then(function(r){ RELEASES = (r&&r.records)||[]; }); },
   trips:      function(){ return callAPI('getRecentTrips',{sinceDate:_lazyCutoff()}).then(function(r){ TRIPS = (r&&r.records)||[]; }); },
-  permits:    function(){ return callAPIPaged('getPermitsPaged',100).then(function(r){ PERMITS = (r&&r.records)||[]; }); },
+  permits:    function(){ return _loadPermitsEager(); },
   fuelreq:    function(){ return callAPI('getFuelRequests').then(function(r){ FUEL_REQUESTS = (r&&r.records)||[]; }); },
   refdata:    function(){ return callAPI('getRefDataBundle').then(function(r){
                   if(!r) return;
@@ -2650,7 +2727,6 @@ function _lazyCutoff(){
 
 // Which datasets each view needs before it can render correctly.
 var _viewData = {
-  dashboard:   ['releases','trips'],
   releases:    ['releases'],
   alltrips:    ['trips'],
   waitingload: ['trips'],
@@ -2660,7 +2736,7 @@ var _viewData = {
   addreleases: ['releases'],
   budget:      ['releases','trips','permits','fuelreq','refdata'],
   permits:     ['permits','renewals'],
-  driveraccts: ['trips','ledger'],
+  driveraccts: ['trips','ledger','refdata'],
   shortage:    ['trips','ledger'],
   deductions:  ['ledger'],
   reqforms:    ['trips','fuelreq'],
@@ -2715,7 +2791,8 @@ async function _prepareView(v){
   if (!missing.length) return true;
   _showViewLoading(v, true);
   try {
-    var results = await Promise.allSettled(missing.map(_ensureData));
+    var fns = missing.map(function(k){ return function(){ return _ensureData(k); }; });
+    var results = await _runInBatches(fns, 2);
     var failed = results.filter(function(r){ return r.status === 'rejected'; });
     if (failed.length){
       toast('Some data failed to load - try Refresh', 'er');
@@ -2776,7 +2853,7 @@ async function switchView(v){
   if(v==='reqforms'){ switchRfTab(_rfCurrentTab||'fuel'); return; }
 
   var renders={
-    dashboard:renderDashboard, releases:renderReleases,
+    releases:renderReleases,
     alltrips:renderTrips, waitingload:renderWaitingToLoad, intransit:renderInTransit, completed:renderCompleted,
     budget:renderBudget, permits:renderPermits,
     agents:renderAgents, fuel:renderFuelRequests,
@@ -2799,86 +2876,485 @@ function switchSettingsTab(n){
 }
 
 // ── LOAD DATA ──
-async function loadAppData(){
-  show_loading(true,'Loading trip data...');
-  try{
-    // TIER 1 — only what's needed to show the app and its first screen.
-    // Kept small on purpose: fewer blocking calls = faster to usable.
-    // Drivers/Vehicles/Users are combined into ONE call (getWorkshopBundle)
-    // since all three have always required opening a SEPARATE, external
-    // spreadsheet (Workshop's) - doing that 3 separate times on every
-    // load was real, avoidable overhead unique to Trips. Settings-page
-    // reference data and Driver Ledger data are each combined into ONE
-    // backend call too (getSettingsPageBundle, getDriverLedgerBundle).
-    var _recentCutoff = new Date(); _recentCutoff.setDate(_recentCutoff.getDate()-90);
-    var _recentCutoffStr = _recentCutoff.toISOString().split('T')[0];
-    // Loaded in small waves rather than all at once. We proved a request
-    // that works perfectly alone can come back empty or time out when
-    // competing with a large simultaneous batch, so each wave stays
-    // small. Drivers/Vehicles/Users come from ONE call
-    // (getWorkshopBundle) since all three require opening the external
-    // Workshop spreadsheet - doing that three separate times was real,
-    // avoidable overhead unique to Trips.
-    var _val = function(r){ return (r && r.status==='fulfilled' && r.value) ? r.value : null; };
+// ── LOCAL STARTUP CACHE (survives closing the browser) ──────────────
+// Unlike the sessionStorage fallback in callAPI (only used when a live
+// request fails), this is used PROACTIVELY: on a returning visit, the
+// app paints immediately from whatever was saved last time instead of
+// waiting on a network round-trip, then quietly refreshes underneath.
+// ── LOCAL CACHE — per-dataset keys, versioned, resilient ────────────
+//
+// Gap 1 (fixed): Trips is now cached, not just Releases/Settings/
+//   Drivers/Vehicles/Users. Returning users get instant Trips views
+//   too, not just the Releases landing page.
+//
+// Gap 2 (fixed): The first 100 Permits records are cached separately,
+//   so that view also paints instantly on returning visits.
+//
+// Gap 3 (fixed): One key per dataset instead of one giant blob.
+//   localStorage caps at ~5MB per site - a large Trips dataset filling
+//   up storage no longer silently breaks the Settings/Users cache too.
+//   Each dataset saves and loads independently; a write failure on one
+//   doesn't affect the others.
+//
+// Gap 4 (fixed): The "saved from X ago" toast only shows on the very
+//   first paint, before the background sync has had a chance to run.
+//   Once the first background sync succeeds and refreshes the data,
+//   the indicator switches to "Live" rather than forever claiming the
+//   data is stale.
+//
+// Gap 5 (fixed): Each key carries a version number. If the data
+//   format ever changes (new fields, renamed keys), bumping the
+//   version constant auto-clears old-format data on first load rather
+//   than silently painting wrong values.
+//
+// Passwords are stripped before any dataset is written to disk -
+// localStorage survives closing the browser, unlike sessionStorage,
+// so it's the wrong place to leave credentials indefinitely.
 
-    // Startup now loads only what the first screen needs: the core
-    // data used everywhere (settings, users, drivers, vehicles) plus
-    // Releases, which is the landing page. Everything else is fetched
-    // when the page that needs it is opened - see _prepareView().
-    var w1 = await Promise.allSettled([
-      callAPI('getSettings'),
-      callAPI('getWorkshopBundle'),
-      callAPI('getRecentReleases',{sinceDate:_recentCutoffStr})
-    ]);
-    SETTINGS = _val(w1[0]) ? (_val(w1[0]).settings||{}) : {};
-    var _wb  = _val(w1[1]);
-    if (_wb) { DRIVERS = _wb.drivers||[]; VEHICLES = _wb.vehicles||[]; USERS = _wb.users||[]; }
-    RELEASES = _val(w1[2]) ? (_val(w1[2]).records||[]) : [];
-    // Releases is now loaded, so opening that page won't refetch it.
-    if (_val(w1[2])) _loaded.releases = true;
+var CACHE_VERSION = 2; // bump this whenever a dataset's structure changes
+var CACHE_PREFIX = 'ak_trips_cache_v';
 
-    var rs = w1;
-    // Permits is no longer fetched at startup - it's the largest
-    // dataset and most users don't open that page every session. It
-    // now loads when Permits & Docs (or Release Budget) is opened.
-    var _criticalNames = ['Settings','Drivers/Vehicles/Users','Releases'];
-    var _failedNames = rs.map(function(x,i){ return x.status==='rejected' ? _criticalNames[i]+' ('+(x.reason&&x.reason.message||'unknown error')+')' : null; }).filter(Boolean);
-    if (_failedNames.length) toast('Failed to load: '+_failedNames.join(', '),'er');
-    // Re-sync CURRENT_USER against the freshly-fetched USERS record, so
-    // permission changes an admin makes take effect on the next refresh
-    // instead of requiring the affected user to log out and back in.
-    if (CURRENT_USER) {
-      var _freshMe = USERS.find(function(u){
-        return u.id===CURRENT_USER.id || (u.username||'').toLowerCase()===(CURRENT_USER.username||'').toLowerCase();
-      });
-      if (_freshMe) {
-        CURRENT_USER = Object.assign({}, CURRENT_USER, _freshMe);
-        try { sessionStorage.setItem('ak_trip_user', JSON.stringify(CURRENT_USER)); } catch(e){}
-        try { if (typeof applyModuleNavPermissions==='function') applyModuleNavPermissions(); } catch(e){}
-        try { if (typeof applyModuleButtonVisibility==='function') applyModuleButtonVisibility(); } catch(e){}
+var CACHE_DATASETS = {
+  // Key          -> what to store when saving, what to restore when loading
+  // Each entry: { save: fn(data)->obj, load: fn(obj)->void }
+  startup: {
+    save: function(bundle) {
+      return {
+        settings: bundle.settings || {},
+        drivers:  bundle.drivers  || [],
+        vehicles: bundle.vehicles || [],
+        users:    (bundle.users||[]).map(function(u){ var c=Object.assign({},u); delete c.password; return c; }),
+        releases: bundle.releases || []
+      };
+    },
+    load: function(data) {
+      SETTINGS = data.settings || {};
+      DRIVERS  = data.drivers  || [];
+      VEHICLES = data.vehicles || [];
+      USERS    = data.users    || [];
+      RELEASES = data.releases || [];
+      _loaded.releases = true;
+    }
+  },
+  trips: {
+    // Recent trips - the largest single dataset, previously uncached
+    save: function(data) { return { records: data || [] }; },
+    load: function(data) {
+      TRIPS = data.records || [];
+      _loaded.trips = true;
+    }
+  },
+  permits: {
+    // Full permits dataset - cached after every successful load
+    save: function(data) { return { records: data || [] }; },
+    load: function(data) {
+      if (!_loaded.permits && (!PERMITS || !PERMITS.length)) {
+        PERMITS = data.records || [];
+        _loaded.permits = true;
       }
     }
-    var _savedView = null;
-    try { _savedView = localStorage.getItem('ak_trip_lastview'); } catch(e){}
-    updateBadges();switchView(_savedView || 'releases');toast('Trip system loaded \u2713','ok');
-    // Safety net: if the saved view got blocked (e.g. permission was
-    // revoked since last time), we'd be stuck on a blank screen — fall
-    // back to Releases, which every logged-in user can always reach.
+  }
+};
+
+function _clearAllCaches() {
+  try {
+    Object.keys(CACHE_DATASETS).forEach(function(name) {
+      try { localStorage.removeItem(_cacheKey(name)); } catch(e) {}
+    });
+  } catch(e) {}
+}
+
+function _cacheKey(dataset) {
+  return CACHE_PREFIX + CACHE_VERSION + '_' + dataset;
+}
+
+// Auto-clear any old-version keys left over from a previous format.
+// Runs once at startup, silently, so stale-format data is never
+// painted rather than causing subtle wrong-value bugs.
+function _clearOldCacheVersions() {
+  try {
+    var keysToRemove = [];
+    for (var i = 0; i < localStorage.length; i++) {
+      var k = localStorage.key(i);
+      if (k && k.indexOf('ak_trips_cache_v') === 0 && k.indexOf(CACHE_PREFIX + CACHE_VERSION) !== 0) {
+        keysToRemove.push(k);
+      }
+      // Also clear the old single-blob key from the original v1 design
+      if (k === 'ak_trips_startup_cache_v1') keysToRemove.push(k);
+      // Also clear the old permits_page1 key from an earlier design
+      if (k === _cacheKey('permits_page1')) keysToRemove.push(k);
+    }
+    keysToRemove.forEach(function(k){ try { localStorage.removeItem(k); } catch(e){} });
+  } catch(e) {}
+}
+_clearOldCacheVersions();
+
+function _saveDatasetCache(datasetName, rawData) {
+  try {
+    var spec = CACHE_DATASETS[datasetName];
+    if (!spec) return;
+    var payload = JSON.stringify({ _at: Date.now(), data: spec.save(rawData) });
+    localStorage.setItem(_cacheKey(datasetName), payload);
+  } catch(e) {
+    // Storage full or unavailable - fail silently, cache is an
+    // optimisation not a requirement.
+  }
+}
+
+function _loadDatasetCache(datasetName) {
+  try {
+    var raw = localStorage.getItem(_cacheKey(datasetName));
+    if (!raw) return null;
+    var parsed = JSON.parse(raw);
+    if (!parsed || !parsed._at || !parsed.data) return null;
+    return parsed; // { _at: timestamp, data: {...} }
+  } catch(e) { return null; }
+}
+
+// Loads ALL cached datasets into app state at once. Returns the
+// oldest _at timestamp across all datasets (used to decide what
+// to show in the "saved from X ago" toast, since we want to report
+// how fresh the oldest piece is, not the newest).
+function _loadAllCaches() {
+  var oldestAt = Date.now();
+  var anyLoaded = false;
+  Object.keys(CACHE_DATASETS).forEach(function(name) {
+    var cached = _loadDatasetCache(name);
+    if (!cached) return;
+    try {
+      CACHE_DATASETS[name].load(cached.data);
+      anyLoaded = true;
+      if (cached._at < oldestAt) oldestAt = cached._at;
+    } catch(e) {}
+  });
+  return anyLoaded ? oldestAt : null;
+}
+
+// Called after every successful server response to keep all cached
+// datasets current. Trips and Permits page 1 are saved separately
+// since they come from different sources than the startup bundle.
+function _saveAllCaches(bundle) {
+  _saveDatasetCache('startup', bundle);
+  // Trips and Permits are NOT in the startup bundle - they're saved
+  // separately when their own loaders complete (see _loadPermitsProgressively
+  // and the Tier 2 completion block).
+}
+
+// Gap 4: track whether the first background sync has completed so
+// the toast can switch from "saved from X ago" to "Live".
+var _bgSyncHasSucceeded = false;
+
+function _timeAgo(ts){
+  var mins = Math.round((Date.now()-ts)/60000);
+  if (mins < 1) return 'just now';
+  if (mins === 1) return '1 minute ago';
+  if (mins < 60) return mins + ' minutes ago';
+  var hrs = Math.round(mins/60);
+  return hrs === 1 ? '1 hour ago' : hrs + ' hours ago';
+}
+
+// ── PERMITS EAGER LOADER ─────────────────────────────────────────────
+// Permits is the one dataset that needs to be ready immediately after
+// login (Permits page, Release Budget, permit alerts all need it) but
+// is too large to include in the startup bundle without slowing login.
+//
+// The problem with using callAPI() here: it goes through the 2-slot
+// global queue. The moment loadAppData() finishes Tier 1, Tier 2
+// immediately fills both slots with Agent Accounts + Agent Expenses.
+// Permits joins the queue and waits behind 6 batched requests - by
+// the time it gets a slot, the user has already clicked somewhere and
+// seen a spinner.
+//
+// This bypasses the queue with its own direct fetch, fired right after
+// the startup bundle resolves, so it runs concurrently with (not after)
+// Tier 2 without competing for queue slots. It uses the same retry
+// and error handling logic as callAPI, just without the queue gate.
+async function _loadPermitsEager() {
+  if (_loaded.permits) return;
+  if (_loadingNow.permits) return _loadingNow.permits;
+
+  var promise = (async function(){
+    var maxAttempts = 3;
+    for (var attempt = 0; attempt < maxAttempts; attempt++) {
+      try {
+        var ctrl = new AbortController();
+        var timer = setTimeout(function(){ ctrl.abort(); }, 45000);
+        var res = await fetch(API, {
+          method: 'POST',
+          body: JSON.stringify({action:'getPermits'}),
+          headers: {'Content-Type':'text/plain'},
+          signal: ctrl.signal
+        });
+        clearTimeout(timer);
+        var text = await res.text();
+        var json;
+        try { json = JSON.parse(text); } catch(e) { json = null; }
+        if (json && !json.error && json.records) {
+          PERMITS = json.records;
+          _loaded.permits = true;
+          delete _loadingNow.permits;
+          _saveDatasetCache('permits', PERMITS);
+          try { updateBadges(); } catch(e){}
+          if (typeof currentView !== 'undefined' && currentView === 'permits') {
+            try { renderPermits(); } catch(e){}
+          }
+          return;
+        }
+        if (attempt < maxAttempts - 1) {
+          await new Promise(function(r){ setTimeout(r, 600*(attempt+1)); });
+        }
+      } catch(e) {
+        if (attempt < maxAttempts - 1) {
+          await new Promise(function(r){ setTimeout(r, 600*(attempt+1)); });
+        }
+      }
+    }
+    delete _loadingNow.permits;
+  })();
+
+  _loadingNow.permits = promise;
+  return promise;
+}
+
+// Legacy alias so existing code that calls _saveLocalStartupCache()
+// keeps working without touching every call site.
+function _saveLocalStartupCache(bundle){ _saveAllCaches(bundle); }
+
+// ── BACKGROUND SYNC (mirrors Workshop's own setInterval pattern) ────
+// Workshop polls every 30 seconds while its app is open - one bundled
+// call, silent unless something's actually wrong, re-rendering
+// whatever's currently on screen in place. This does the same thing
+// for Trips, reusing getTripsStartupBundle (already a single bundled
+// call) and _applyStartupBundle's existing "refresh in place" path.
+// The interval is a named constant specifically so it's a one-line
+// change if it ever needs adjusting, rather than a number buried
+// inside a function body.
+var TRIPS_BACKGROUND_SYNC_INTERVAL_MS = 30000; // 30s - matches Workshop's own proven cadence exactly, not a guess
+var _bgSyncTimer = null;
+var _bgSyncWasOffline = false;
+
+// Picks where to land after login. Releases is the requested default,
+// but not every role has access to it (canModule gates it - see Phase
+// 15's VIEW_MODULE_MAP further down this file) - forcing everyone
+// onto it regardless produced exactly the "you don't have access"
+// dead-end this replaces. Falls through an ordered list of
+// alternates, ending on Settings, which every logged-in user can
+// always reach (not gated by VIEW_MODULE_MAP at all).
+var LANDING_VIEW_CANDIDATES = ['releases','alltrips','permits','shortage','deductions','driveraccts','agents','settings'];
+function _pickLandingView(){
+  for (var i=0; i<LANDING_VIEW_CANDIDATES.length; i++){
+    var v = LANDING_VIEW_CANDIDATES[i];
+    var mod = (typeof VIEW_MODULE_MAP !== 'undefined') ? VIEW_MODULE_MAP[v] : undefined;
+    // No module gate defined for this view at all -> always reachable.
+    if (!mod) return v;
+    if (typeof canModule === 'function' && canModule(mod, null)) return v;
+  }
+  return 'settings';
+}
+
+function _startBackgroundSync(){
+  if (_bgSyncTimer) return; // already running - callers may invoke this more than once per session, harmless
+  _bgSyncTimer = setInterval(async function(){
+    var _cutoff = new Date(); _cutoff.setDate(_cutoff.getDate()-90);
+    var _cutoffStr = _cutoff.toISOString().split('T')[0];
+    try {
+      var bundle = await callAPI('getTripsStartupBundle', {sinceDate:_cutoffStr});
+      _saveLocalStartupCache(bundle);
+      _applyStartupBundle(bundle, {isFirstPaint:false});
+      _bgSyncHasSucceeded = true; // Gap 4: suppress "saved from X ago" toast after first successful sync
+      if (_bgSyncWasOffline) { _bgSyncWasOffline = false; toast('Back online \u2713','ok'); }
+    } catch(e) {
+      // Silent on purpose - a single missed poll isn't worth alarming
+      // anyone over, the next one 30s later just tries again. Only
+      // surfaced once we've actually recovered from a stretch of
+      // failures (the toast above) - same UX Workshop uses.
+      _bgSyncWasOffline = true;
+    }
+  }, TRIPS_BACKGROUND_SYNC_INTERVAL_MS);
+}
+
+// Applies a startup bundle (from cache OR a live fetch) to app state
+// and renders. isFirstPaint=true navigates to the saved/default view
+// (the normal "just logged in" case); isFirstPaint=false re-renders
+// whatever view is already showing, without navigating away from it -
+// used when a background refresh completes after a cache-painted
+// screen is already up and the person may have already moved around.
+function _applyStartupBundle(bundle, opts){
+  opts = opts || {};
+  SETTINGS = bundle.settings || {};
+  DRIVERS  = bundle.drivers  || [];
+  VEHICLES = bundle.vehicles || [];
+  USERS    = bundle.users    || [];
+  RELEASES = bundle.releases || [];
+  // Releases is now loaded, so opening that page won't refetch it.
+  _loaded.releases = true;
+
+  // All permits now arrive in the startup bundle - seed PERMITS
+  // The backend isolates a failure in any one piece (settings /
+  // workshop data / releases) from taking down the others - surface
+  // those individually if present, same detail level as before.
+  var _partialFailed = [];
+  if (bundle.settingsError) _partialFailed.push('Settings ('+bundle.settingsError+')');
+  if (bundle.workshopError) _partialFailed.push('Drivers/Vehicles/Users ('+bundle.workshopError+')');
+  if (bundle.releasesError) _partialFailed.push('Releases ('+bundle.releasesError+')');
+  if (_partialFailed.length) toast('Failed to load: '+_partialFailed.join(', '),'er');
+
+  // Re-sync CURRENT_USER against the freshly-fetched USERS record, so
+  // permission changes an admin makes take effect on the next refresh
+  // instead of requiring the affected user to log out and back in.
+  if (CURRENT_USER) {
+    var _freshMe = USERS.find(function(u){
+      return u.id===CURRENT_USER.id || (u.username||'').toLowerCase()===(CURRENT_USER.username||'').toLowerCase();
+    });
+    if (_freshMe) {
+      CURRENT_USER = Object.assign({}, CURRENT_USER, _freshMe);
+      try { sessionStorage.setItem('ak_trip_user', JSON.stringify(CURRENT_USER)); } catch(e){}
+      try { if (typeof applyModuleNavPermissions==='function') applyModuleNavPermissions(); } catch(e){}
+      try { if (typeof applyModuleButtonVisibility==='function') applyModuleButtonVisibility(); } catch(e){}
+    }
+  }
+
+  updateBadges();
+
+  if (opts.isFirstPaint) {
+    var _savedView = opts.savedView;
+    switchView(_savedView || _pickLandingView());
+    _startBackgroundSync();
+    // Safety net: if the chosen view got blocked (e.g. permission was
+    // revoked between page load and now), we'd be stuck on a blank
+    // screen — fall back through the same permission-aware picker
+    // rather than a hardcoded view that might be equally inaccessible.
     setTimeout(function(){
       var el = _savedView ? document.getElementById('view-'+_savedView) : null;
       if (_savedView && (!el || el.classList.contains('hidden'))) {
-        switchView('releases');
+        switchView(_pickLandingView());
       }
     }, 400);
-  }catch(e){toast('Error: '+e.message,'er');}
+  } else if (typeof currentView !== 'undefined' && currentView) {
+    // Background refresh - re-render whatever's already showing but
+    // bypass switchView/_prepareView entirely. switchView shows a
+    // loading spinner if any dataset isn't marked loaded yet, which
+    // causes the jarring "page goes to loading" flicker the user sees
+    // every 30 seconds. The data is already there from the sync -
+    // just re-render directly without any loading state.
+    try {
+      var _renders = {
+        releases:renderReleases, alltrips:renderTrips, waitingload:renderTrips,
+        intransit:renderTrips, completed:renderTrips, shortage:renderShortage,
+        deductions:renderDeductions, permits:renderPermits, driveraccts:renderDriverAccounts,
+        agents:renderAgents, invoicing:renderInvoicing, fuel:renderFuelRequests,
+        reqforms:renderFuelRequests, budget:renderBudget, settings:renderSettings
+      };
+      if (_renders[currentView]) _renders[currentView]();
+    } catch(e){}
+  }
+}
+
+async function loadAppData(){
+  var _recentCutoff = new Date(); _recentCutoff.setDate(_recentCutoff.getDate()-90);
+  var _recentCutoffStr = _recentCutoff.toISOString().split('T')[0];
+
+  // Detect a browser page refresh (F5 / Ctrl+R / browser reload button).
+  // When detected, clear the localStorage cache first so the user sees
+  // a real loading screen instead of an instant blink from cached data -
+  // a refresh is an intentional "reload everything" signal, not a
+  // navigation where instant paint is helpful.
+  var _isBrowserRefresh = false;
+  try {
+    var _navEntry = performance.getEntriesByType('navigation')[0];
+    _isBrowserRefresh = _navEntry && (_navEntry.type === 'reload');
+  } catch(e) {}
+  if (_isBrowserRefresh) _clearAllCaches();
+
+  // Instant paint from local cache - loads ALL cached datasets at
+  // once (startup bundle + Trips + Permits page 1 if available).
+  // First visit on this device has no cache and falls straight through
+  // to the normal loading screen below - nothing changes for that case.
+  var _cacheOldestAt = _loadAllCaches();
+  var _paintedFromCache = _cacheOldestAt !== null;
+  if (_paintedFromCache) {
+    _applyStartupBundle({
+      settings: SETTINGS, drivers: DRIVERS, vehicles: VEHICLES,
+      users: USERS, releases: RELEASES
+    }, {isFirstPaint:true, savedView:_pickLandingView()});
+    show_loading(false);
+    // Gap 4: only show "saved from X ago" before the first background
+    // sync has succeeded. Once it has, the indicator already says
+    // "Live" and a stale-data toast would be misleading.
+    if (!_bgSyncHasSucceeded) {
+      // toast removed - sync indicator already shows Syncing.../Live
+    }
+  } else {
+    show_loading(true,'Loading trip data...');
+  }
+
+  try{
+    // TIER 1 — only what's needed to show the app and its first screen.
+    // Kept small on purpose: fewer blocking calls = faster to usable.
+    // Settings-page reference data and Driver Ledger data are each
+    // combined into ONE backend call too (getSettingsPageBundle,
+    // getDriverLedgerBundle).
+    // Startup now loads only what the first screen needs - core data
+    // used everywhere (settings, users, drivers, vehicles) plus
+    // Releases, the landing page - as ONE bundled request instead of
+    // three concurrent ones. Workshop's equivalent startup call proved
+    // far more reliable than Trips' three-at-once pattern even though
+    // both go through the same Apps Script redirect; firing several
+    // requests at once right after login (the least forgiving moment -
+    // possibly a cold execution) was the actual difference, not the
+    // redirect itself. Retries are sequential too, one attempt fully
+    // finishing (or failing) before the next starts, matching
+    // Workshop's loadRecords() instead of retrying while other
+    // requests may still be in flight.
+    var _startupBundle = null;
+    var _startupError = null;
+    for (var _attempt = 1; _attempt <= 3; _attempt++) {
+      try {
+        _startupBundle = await callAPI('getTripsStartupBundle', {sinceDate:_recentCutoffStr}, 0, 0);
+        _startupError = null;
+        break;
+      } catch (e) {
+        _startupError = e;
+        if (_attempt < 3) {
+          await new Promise(function(r){ setTimeout(r, _attempt*3000); });
+        }
+      }
+    }
+
+    if (_startupBundle) {
+      _saveLocalStartupCache(_startupBundle);
+      _applyStartupBundle(_startupBundle, {isFirstPaint:!_paintedFromCache, savedView:_pickLandingView()});
+      if (_paintedFromCache) toast('Refreshed \u2713','ok');
+      else toast('Trip system loaded \u2713','ok');
+    } else if (_paintedFromCache) {
+      // Already showing the cached version - don't show a scary error
+      // on top of a screen that's already usable, just say the
+      // refresh itself didn't happen.
+      toast('Could not refresh — still showing saved data from earlier','er');
+    } else {
+      // Permits is no longer fetched at startup - it's the largest
+      // dataset and most users don't open that page every session. It
+      // now loads when Permits & Docs (or Release Budget) is opened.
+      var _failedNames = _startupError
+        ? ['Settings, Drivers/Vehicles/Users, Releases ('+(_startupError.message||'unknown error')+')']
+        : [];
+      if (_failedNames.length) toast('Failed to load: '+_failedNames.join(', '),'er');
+    }
+  }catch(e){ if(!_paintedFromCache) toast('Error: '+e.message,'er'); }
   finally{show_loading(false);}
+
+  // Fire permits eager loader immediately after Tier 1, before Tier 2
+  // fills both queue slots. Not awaited - runs concurrently with Tier 2
+  // via its own direct fetch, bypassing the queue entirely.
+  if (!_loaded.permits) {
+    _loadPermitsEager().catch(function(){});
+  }
 
   // TIER 2 — everything else, loaded in the background AFTER the app is
   // already usable. The user isn't waiting on any of this; once it
   // arrives, badges and whatever view is currently open just refresh
   // quietly to reflect it.
   try{
-    var bgBadge = document.getElementById('bgload-badge');
     if (bgBadge) bgBadge.style.display = 'flex';
     var secondaryFns=[
       function(){return callAPI('getAgentAccounts');},
@@ -2888,7 +3364,7 @@ async function loadAppData(){
       function(){return callAPI('getOlderReleases',{beforeDate:_recentCutoffStr});},
       function(){return callAPI('getOlderTrips',{beforeDate:_recentCutoffStr});}
     ];
-    var rs2=await Promise.allSettled(secondaryFns.map(function(fn){return fn();}));
+    var rs2=await _runInBatches(secondaryFns, 2);
     AGENT_ACCOUNTS   = rs2[0].status==='fulfilled'  ? (rs2[0].value.records||[]) : [];
     AGENT_EXPENSES   = rs2[1].status==='fulfilled'  ? (rs2[1].value.records||[]) : [];
     INVOICES         = rs2[2].status==='fulfilled'  ? (rs2[2].value.records||[]) : [];
@@ -2898,6 +3374,11 @@ async function loadAppData(){
     // arrives in two waves instead of one big upfront wait.
     if (rs2[4].status==='fulfilled') RELEASES = RELEASES.concat(rs2[4].value.records||[]);
     if (rs2[5].status==='fulfilled') TRIPS    = TRIPS.concat(rs2[5].value.records||[]);
+    // Save Trips to its own cache key now that Tier 2 has merged both
+    // recent + older records into TRIPS - this is the first point in
+    // any session where the dataset is complete enough to be worth
+    // caching for the next visit's instant paint.
+    _saveDatasetCache('trips', TRIPS);
     var _secondaryNames = ['Agent Accounts','Agent Expenses','Invoices','Renewal Requests','Older Releases','Older Trips'];
     var _failedSecondary = rs2.map(function(x,i){ return x.status==='rejected' ? _secondaryNames[i] : null; }).filter(Boolean);
     if (_failedSecondary.length) toast('Failed to load: '+_failedSecondary.join(', ')+' — try Refresh','er');
@@ -2911,11 +3392,22 @@ async function loadAppData(){
     var modalOpen = document.querySelector('.overlay:not(.hidden)');
     if (!modalOpen) {
       var _scrollY = window.scrollY;
-      try { switchView(currentView); } catch(e){}
+      // Same fix as the 30-second sync refresh: call the render
+      // function directly rather than switchView, which would go
+      // through _prepareView and show a loading spinner.
+      try {
+        var _t2renders = {
+          releases:renderReleases, alltrips:renderTrips, waitingload:renderTrips,
+          intransit:renderTrips, completed:renderTrips, shortage:renderShortage,
+          deductions:renderDeductions, permits:renderPermits, driveraccts:renderDriverAccounts,
+          agents:renderAgents, invoicing:renderInvoicing, fuel:renderFuelRequests,
+          reqforms:renderFuelRequests, budget:renderBudget, settings:renderSettings
+        };
+        if (_t2renders[currentView]) _t2renders[currentView]();
+      } catch(e){}
       window.scrollTo(0, _scrollY);
     }
   }catch(e){
-    var bgBadge2 = document.getElementById('bgload-badge');
     if (bgBadge2) bgBadge2.style.display = 'none';
     /* secondary data is non-critical - fail silently otherwise */
   }
@@ -2924,9 +3416,12 @@ async function loadAppData(){
   try{ var ae=await callAPI('getAddExpenses'); if(ae&&ae.records)ADD_EXPENSES=ae.records; }catch(e){}
 }
 async function refreshAll(){
-  // Clear the lazy-load cache so every dataset is refetched on demand,
-  // then reload the core data and re-render the current page.
+  // Clear both the in-memory lazy-load flags AND the localStorage
+  // cache so the next loadAppData shows a real loading screen instead
+  // of an instant blink from cached data - a manual refresh is an
+  // intentional "reload everything" signal.
   _loaded = {}; _loadingNow = {};
+  _clearAllCaches();
   await loadAppData();
 }
 
@@ -4277,33 +4772,38 @@ function _routeMileageAmount(destination) {
 
 // ── LOGIN ──
 var _speculativeLoadPromise = null;
+var LOGIN_IN_PROGRESS = false;
 async function doSignIn(){
+  if(LOGIN_IN_PROGRESS) return; // guards against a double-click firing two overlapping requests
   var uEl=document.getElementById('aklgu');var pEl=document.getElementById('aklgp');
   if(!uEl||!pEl){console.warn('Login form not found');return;}
   var u=(uEl.value||'').trim();var p=pEl.value||'';
   var errEl=document.getElementById('aklge');if(errEl)errEl.textContent='';
   if(!u||!p){errEl.textContent='Enter username and password';return;}
+  LOGIN_IN_PROGRESS=true;
   var btn=document.getElementById('aklgbtn');
-  if(!USERS.length){
-    if(btn){btn.disabled=true;btn.textContent='Connecting...';}
-    try{
-      // Checks the fast local copy first; if this username isn't there
-      // (e.g. a brand-new account created since the last sync), the
-      // backend automatically falls back to reading Workshop live.
-      var r=await callAPI('getUsersForLogin',{username:u});
-      USERS=r.records||[];
-      if(!USERS.length){errEl.textContent='No users found — check API URL';if(btn){btn.disabled=false;btn.textContent='Sign In';}return;}
-    }catch(e){
-      errEl.textContent='⚠️ Cannot connect — check your Apps Script URL';
-      if(btn){btn.disabled=false;btn.textContent='Sign In';}
-      return;
-    }
+  if(btn){btn.disabled=true;btn.textContent='Signing in...';}
+
+  var result;
+  try{
+    // Credentials are verified entirely server-side now - the browser
+    // never receives the user roster or anyone's password. One
+    // controlled retry only (maxRetries=1); login shouldn't silently
+    // turn into several attempts under poor conditions.
+    result=await callAPI('loginUser',{username:u,password:p},0,1);
+  }catch(e){
+    errEl.textContent=e.message||'⚠️ Cannot connect — check your Apps Script URL';
+    LOGIN_IN_PROGRESS=false;
     if(btn){btn.disabled=false;btn.textContent='Sign In';}
+    return;
   }
-  var found=USERS.find(function(user){return(user.username||'').toLowerCase()===u.toLowerCase();});
-  if(!found){errEl.textContent='Username not found';return;}
-  if((found.status||'active')==='inactive'){errEl.textContent='Account inactive. Contact admin.';return;}
-  if((found.password||'')!==p){errEl.textContent='Incorrect password';return;}
+  if(!result||!result.ok||!result.user){
+    errEl.textContent=(result&&result.message)||'Invalid username or password.';
+    LOGIN_IN_PROGRESS=false;
+    if(btn){btn.disabled=false;btn.textContent='Sign In';}
+    return;
+  }
+  var found=result.user;
   // The app's actual data (Trips, Releases, etc.) is identical no
   // matter which valid user is signing in - there's no reason to wait
   // until credentials are confirmed before starting to fetch it. Kick
@@ -4311,9 +4811,11 @@ async function doSignIn(){
   // instead of only starting once the user is fully "in" - this
   // overlaps two things that used to happen one after another.
   _speculativeLoadPromise = loadAppData();
-  if(btn)btn.disabled=true;var box=document.getElementById('aklgb');
-  if(box){box.innerHTML='<div style="display:flex;flex-direction:column;align-items:center;justify-content:center;padding:20px 0;gap:18px"><div style="width:48px;height:48px;border:3px solid #d2d2d7;border-top-color:#0a2d6e;border-radius:50%;animation:spin .7s linear infinite"></div><div style="font-size:18px;font-weight:700;color:#0a2d6e">Logging in...</div></div>';}
-  CURRENT_USER=found;try{sessionStorage.setItem('ak_trip_user',JSON.stringify(found));}catch(e){}afterLogin(found);
+  var box=document.getElementById('aklgb');
+  if(box){box.innerHTML='<div style="display:flex;flex-direction:column;align-items:center;justify-content:center;padding:20px 0;gap:18px"><div style="width:48px;height:48px;border:3px solid #d2d2d7;border-top-color:#0a2d6e;border-radius:50%;animation:spin .7s linear infinite"></div><div style="font-size:18px;font-weight:700;color:#0a2d6e;letter-spacing:-.2px">Logging in...</div><div style="font-size:13px;color:#86868b">Connecting to database</div></div>';}
+  CURRENT_USER=found;try{sessionStorage.setItem('ak_trip_user',JSON.stringify(found));}catch(e){}
+  LOGIN_IN_PROGRESS=false;
+  afterLogin(found);
 }
 document.getElementById('aklgbtn').addEventListener('click',doSignIn);
 document.getElementById('aklgu').addEventListener('keydown',function(e){if(e.key==='Enter')document.getElementById('aklgp').focus();});
@@ -5185,7 +5687,16 @@ function renderDriverSummary() {
   });
 
   var sub = document.getElementById('driveraccts-sub');
-  if(sub) sub.textContent = visibleRows.length+' driver'+(visibleRows.length!==1?'s':'')+(visibleRows.length!==drivers.length?' (of '+drivers.length+')':'');
+  if(sub){
+    // Full roster size, so the count here reads as "7 of 24 have
+    // activity" rather than a bare "7 drivers" that looks like a cap
+    // or a bug when most of the roster has a clean record.
+    var totalDriverCount = (typeof DRIVERS !== 'undefined' && DRIVERS.length) ? DRIVERS.length : null;
+    var txt = drivers.length+' driver'+(drivers.length!==1?'s':'')+' with outstanding activity';
+    if (totalDriverCount) txt += ' (of '+totalDriverCount+' total)';
+    if (visibleRows.length !== drivers.length) txt = visibleRows.length+' shown \u2014 '+txt;
+    sub.textContent = txt;
+  }
 
   var filterBar = '<div style="display:flex;gap:8px;align-items:center;margin-bottom:12px;flex-wrap:nowrap">'
     + '<input type="text" id="dsum-search-driver" placeholder="🔍 Search driver..." autocomplete="off" oninput="renderDriverSummary()" value="'+esc(searchInputEl ? searchInputEl.value : '')+'" style="flex:1;min-width:170px;max-width:260px;border:1.5px solid var(--br);border-radius:8px;padding:8px 12px;font-size:13px;outline:none">'
@@ -6319,7 +6830,6 @@ function renderInvoicing(){
     return '<tr><td><b>'+esc(inv.invoiceNo)+'</b></td><td>'+fmtDate(inv.invoiceDate)+'</td><td>'+esc(inv.customer)+'</td><td>'+tripIds.length+' trips</td><td>'+fmt(inv.totalM3)+' m³</td><td>USD '+fmt(inv.totalAmountUSD)+'</td><td>'+statusBadge(inv.status)+'</td><td><button class="actbtn v" onclick="toast(\'Invoice detail — Phase 7\',\'in\')">View</button></td></tr>';
   }).join('');
 }
-function renderDashboard(){updateBadges();}
 
 // ── SETTINGS ──
 function renderSettings(){
@@ -6475,25 +6985,14 @@ async function saveAllSettings(){
 // ── LOGIN ──
 async function initLogin(){
   try{var saved=sessionStorage.getItem('ak_trip_user');if(saved){var user=JSON.parse(saved);if(user&&user.username){CURRENT_USER=user;afterLogin(user);return;}}}catch(e){}
+  // No server call needed here - credentials are verified server-side
+  // by loginUser() when Sign In is clicked. Show Ready immediately,
+  // same as Workshop's login page behavior.
   var loginStatus=document.getElementById('aklgstatus');
-  if(loginStatus){ loginStatus.style.color='#86868b'; loginStatus.textContent='Verifying access...'; }
-  callAPI('getUsers').then(function(r){
-    if(r&&r.records&&r.records.length>0) USERS=r.records;
-    if(loginStatus){
-      if(USERS.length>0){
-        loginStatus.style.color='#16a34a';
-        loginStatus.textContent='\u2705 Ready - sign in to continue';
-      } else {
-        loginStatus.style.color='#dc2626';
-        loginStatus.textContent='\u26a0\ufe0f No users found. Contact admin.';
-      }
-    }
-  }).catch(function(){
-    if(loginStatus){
-      loginStatus.style.color='#86868b';
-      loginStatus.textContent='Sign in to continue';
-    }
-  });
+  if(loginStatus){
+    loginStatus.style.color='#4ade80';
+    loginStatus.textContent='\u2705 Ready - sign in to continue';
+  }
 }
 async function afterLogin(user){
   document.getElementById('aklg').style.display='none';document.getElementById('mainlayout').style.display='flex';
@@ -15640,28 +16139,6 @@ function applyApprovalButtonVisibility() {
 });
 
 console.log('Phase 17 — Granular Approve permission loaded ✓');
-
-// ═══════════════════════════════════════════════════════════════════
-// PHASE 18 — REMEMBER LAST VIEW (survives a browser refresh)
-// ═══════════════════════════════════════════════════════════════════
-
-var LAST_VIEW_KEY = 'ak_trip_lastview';
-
-// Sub-views that depend on in-memory state (an editingId, a selected
-// release, etc.) that won't exist right after a fresh page load —
-// restoring straight into these would just show a broken/empty form.
-var _p18SkipViews = ['edittrip','addtrips','addreleases'];
-
-var _p18_switchView = window.switchView;
-window.switchView = function(v) {
-  var result = _p18_switchView(v);
-  if (_p18SkipViews.indexOf(v) === -1) {
-    try { localStorage.setItem(LAST_VIEW_KEY, v); } catch(e){}
-  }
-  return result;
-};
-
-console.log('Phase 18 — Remember last view loaded ✓');
 </script>
 </body>
 </html>

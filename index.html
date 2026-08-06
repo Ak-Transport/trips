@@ -3222,6 +3222,7 @@ function _pickLandingView(){
 var _activeListeners = {};   // path → Firebase listener ref (prevent duplicates)
 var _debounceTimers  = {};   // collectionName → setTimeout handle
 var _fetchingNow     = {};   // collectionName → bool (in-flight guard)
+var _pendingFetch    = {};   // collectionName → bool (change arrived during fetch)
 
 // Per-view: which collection timestamps to watch, and how to refresh
 // each one. Structure: { collectionName: { fetch, apply } }
@@ -3261,20 +3262,73 @@ function _doViewRefresh(view) {
   if (!config) return;
   if (document.querySelector('.overlay:not(.hidden)')) return;
   var key = config.collections.join(',');
-  if (_fetchingNow[key]) return;
+
+  if (_fetchingNow[key]) {
+    // A fetch is already running — mark pending so we do one
+    // catch-up fetch after it completes rather than dropping this trigger
+    _pendingFetch[key] = true;
+    return;
+  }
+
   _fetchingNow[key] = true;
+  _pendingFetch[key] = false;
   var _scrollY = window.scrollY;
-  config.fetch().then(function(r) {
-    // Deduplicate by id before applying - prevents double-entry when
-    // an optimistic local insert exists alongside the Firebase record
-    if (!config.multi && r.records) {
-      var seen = {};
-      r.records = r.records.filter(function(rec) {
-        if (!rec.id || seen[rec.id]) return false;
-        seen[rec.id] = true; return true;
+
+  // Read _meta to decide single-record patch vs full fetch
+  _fbDb.ref('/ak_trips/_meta').once('value').then(function(metaSnap) {
+    var meta = metaSnap.val() || {};
+    var collections = config.collections;
+
+    var canPatch = collections.every(function(col) {
+      var op = meta[col + '_lastOp'];
+      var id = meta[col + '_lastId'];
+      return id && (op === 'add' || op === 'update' || op === 'delete');
+    });
+
+    if (canPatch) {
+      return Promise.all(collections.map(function(col) {
+        var op = meta[col + '_lastOp'];
+        var id = meta[col + '_lastId'];
+
+        if (op === 'delete') {
+          var localArr = {trips:TRIPS,releases:RELEASES,permits:PERMITS,
+            fuelRequests:FUEL_REQUESTS,deductions:DEDUCTIONS,deductionPmts:DEDUCTION_PMTS,
+            shortagePmts:SHORTAGE_PMTS,agentAccounts:AGENT_ACCOUNTS,agentExpenses:AGENT_EXPENSES,
+            invoices:INVOICES,renewalReqs:RENEWAL_REQS}[col];
+          if (localArr) {
+            var idx = localArr.findIndex(function(x){ return x.id === id; });
+            if (idx >= 0) localArr.splice(idx, 1);
+          }
+          return Promise.resolve(null);
+        }
+
+        return _fbDb.ref('/ak_trips/' + col + '/' + id).once('value').then(function(snap) {
+          var rec = snap.val();
+          if (!rec) return;
+          var localArr = {trips:TRIPS,releases:RELEASES,permits:PERMITS,
+            fuelRequests:FUEL_REQUESTS,deductions:DEDUCTIONS,deductionPmts:DEDUCTION_PMTS,
+            shortagePmts:SHORTAGE_PMTS,agentAccounts:AGENT_ACCOUNTS,agentExpenses:AGENT_EXPENSES,
+            invoices:INVOICES,renewalReqs:RENEWAL_REQS}[col];
+          if (localArr) {
+            var idx = localArr.findIndex(function(x){ return x.id === rec.id; });
+            if (idx >= 0) localArr[idx] = rec;
+            else localArr.push(rec);
+          }
+        });
+      }));
+    } else {
+      return config.fetch().then(function(r) {
+        if (!config.multi && r.records) {
+          var seen = {};
+          r.records = r.records.filter(function(rec) {
+            if (!rec.id || seen[rec.id]) return false;
+            seen[rec.id] = true; return true;
+          });
+        }
+        config.apply(r);
       });
     }
-    config.apply(r);
+  }).then(function() {
     try { if (_renders[view]) _renders[view](); } catch(e) {}
     window.scrollTo(0, _scrollY);
     updateBadges();
@@ -3283,6 +3337,11 @@ function _doViewRefresh(view) {
     setSyncStatus('er');
   }).then(function() {
     _fetchingNow[key] = false;
+    // If a change arrived while we were fetching, do one catch-up fetch
+    if (_pendingFetch[key]) {
+      _pendingFetch[key] = false;
+      _doViewRefresh(view);
+    }
   });
 }
 
@@ -3336,6 +3395,15 @@ function _startBackgroundSync(){
   if (_bgSyncTimer) return;
   _bgSyncTimer = true;
   if (!_fbDb) return;
+
+  // Re-check current view when tab regains focus — catches changes
+  // that arrived while the tab was backgrounded and listeners were
+  // throttled or missed by the browser
+  document.addEventListener('visibilitychange', function() {
+    if (document.visibilityState === 'visible' && currentView && _viewSyncConfig[currentView]) {
+      _doViewRefresh(currentView);
+    }
+  });
   // Listeners are attached per-view via _syncListenersForView()
   // called from switchView() - nothing to start here globally
   setSyncStatus('on');

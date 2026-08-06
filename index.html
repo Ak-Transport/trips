@@ -3249,13 +3249,20 @@ var _viewSyncConfig = {
   driveraccts: { collections: ['trips'],        fetch: function(){ return fbRead('/trips');        }, apply: function(r){ TRIPS=r.records; } },
 };
 
-var _renders = {
-  releases:renderReleases, alltrips:renderTrips, waitingload:renderTrips,
-  intransit:renderTrips, completed:renderTrips, shortage:renderShortage,
-  deductions:renderDeductions, permits:renderPermits, driveraccts:renderDriverAccounts,
-  agents:renderAgents, invoicing:renderInvoicing, fuel:renderFuelRequests,
-  reqforms:renderFuelRequests, budget:renderBudget, settings:renderSettings
-};
+// _renders is a function (not an object) so render functions defined in
+// later script blocks are looked up at call time, not at parse time.
+// This prevents ReferenceError when e.g. renderShortage is defined after
+// this script block but referenced here at module level.
+function _getRender(view) {
+  var map = {
+    releases:renderReleases, alltrips:renderTrips, waitingload:renderTrips,
+    intransit:renderTrips, completed:renderTrips, shortage:renderShortage,
+    deductions:renderDeductions, permits:renderPermits, driveraccts:renderDriverAccounts,
+    agents:renderAgents, invoicing:renderInvoicing, fuel:renderFuelRequests,
+    reqforms:renderFuelRequests, budget:renderBudget, settings:renderSettings
+  };
+  return map[view];
+}
 
 function _doViewRefresh(view) {
   var config = _viewSyncConfig[view];
@@ -3329,7 +3336,7 @@ function _doViewRefresh(view) {
       });
     }
   }).then(function() {
-    try { if (_renders[view]) _renders[view](); } catch(e) {}
+    try { var _rf=_getRender(view); if(_rf) _rf(); } catch(e) {}
     window.scrollTo(0, _scrollY);
     updateBadges();
     setSyncStatus('on');
@@ -3481,7 +3488,7 @@ function _applyStartupBundle(bundle, opts){
         agents:renderAgents, invoicing:renderInvoicing, fuel:renderFuelRequests,
         reqforms:renderFuelRequests, budget:renderBudget, settings:renderSettings
       };
-      if (_renders[currentView]) _renders[currentView]();
+      var _rf2=_getRender(currentView); if(_rf2) _rf2();
     } catch(e){}
   }
 }
@@ -7310,10 +7317,8 @@ function doLogout(){
   try{sessionStorage.removeItem('ak_trip_user');}catch(e){}CURRENT_USER=null;
   location.reload();
 }
-document.getElementById('aklgbtn').addEventListener('click',doSignIn);
-document.getElementById('aklgu').addEventListener('keydown',function(e){if(e.key==='Enter')document.getElementById('aklgp').focus();});
-document.getElementById('aklgp').addEventListener('keydown',function(e){if(e.key==='Enter')doSignIn();});
-// (duplicate window.addEventListener('load', ...) removed — was causing initLogin() and the whole load sequence to run twice)
+// (duplicate event listeners removed — aklgbtn click, aklgu keydown,
+//  aklgp keydown are already registered in the main script block above)
 </script>
 
 <!-- ═══════════════════════════════════════════════════════════════

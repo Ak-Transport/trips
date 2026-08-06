@@ -3217,50 +3217,81 @@ function _pickLandingView(){
 
 function _startBackgroundSync(){
   if (_bgSyncTimer) return;
-  // Replace polling with Firebase real-time listener.
-  // Fires immediately with current data, then again instantly
-  // whenever ANY connected user makes a change - no 30s delay.
-  _bgSyncTimer = true; // mark as started so this only runs once
-  if (!_fbDb) return; // Firebase not available, skip
+  _bgSyncTimer = true;
+  if (!_fbDb) return;
 
-  // Listen to the collections that change most frequently
-  var _listenPaths = [
-    ['/trips',        function(v){ if(v){ TRIPS = Object.values(v); } }],
-    ['/releases',     function(v){ if(v){ RELEASES = Object.values(v); _loaded.releases = true; } }],
-    ['/permits',      function(v){ if(v){ PERMITS = Object.values(v); _loaded.permits = true; } }],
-    ['/fuelRequests', function(v){ if(v){ FUEL_REQUESTS = Object.values(v); } }],
-    ['/renewalReqs',  function(v){ if(v){ RENEWAL_REQS = Object.values(v); } }]
-  ];
+  // ── OPTION 2: Single timestamp listener + targeted fetches ──────
+  // Instead of listening to entire collections (which pushes full
+  // datasets to every browser on every save), we listen ONLY to the
+  // /_meta/lastSyncedAt timestamp (~100 bytes). When it changes,
+  // we fetch ONLY what the current view actually needs.
+  // This reduces downloads by ~95% vs full-collection listeners.
 
-  _listenPaths.forEach(function(pair) {
-    _fbDb.ref('/ak_trips' + pair[0]).on('value', function(snap) {
-      try {
-        pair[1](snap.val());
-        updateBadges();
-        // Re-render the current view in place if it uses this data
-        var _renders = {
-          releases:renderReleases, alltrips:renderTrips, waitingload:renderTrips,
-          intransit:renderTrips, completed:renderTrips, shortage:renderShortage,
-          deductions:renderDeductions, permits:renderPermits, driveraccts:renderDriverAccounts,
-          agents:renderAgents, invoicing:renderInvoicing, fuel:renderFuelRequests,
-          reqforms:renderFuelRequests, budget:renderBudget, settings:renderSettings
-        };
-        if (currentView && _renders[currentView] && !document.querySelector('.overlay:not(.hidden)')) {
-          var _scrollY = window.scrollY;
-          try { _renders[currentView](); } catch(e){}
-          window.scrollTo(0, _scrollY);
-        }
-        setSyncStatus('on');
-        _bgSyncWasOffline = false;
-      } catch(e) {
-        _bgSyncWasOffline = true;
-        setSyncStatus('er');
-      }
-    }, function(err) {
+  // Map each view to the collections it actually needs refreshed
+  var _viewCollections = {
+    releases:     [['/releases',     function(v){ if(v){RELEASES=Object.values(v);_loaded.releases=true;} }]],
+    alltrips:     [['/trips',        function(v){ if(v){TRIPS=Object.values(v);} }]],
+    waitingload:  [['/trips',        function(v){ if(v){TRIPS=Object.values(v);} }]],
+    intransit:    [['/trips',        function(v){ if(v){TRIPS=Object.values(v);} }]],
+    completed:    [['/trips',        function(v){ if(v){TRIPS=Object.values(v);} }]],
+    shortage:     [['/trips',        function(v){ if(v){TRIPS=Object.values(v);} }]],
+    permits:      [['/permits',      function(v){ if(v){PERMITS=Object.values(v);_loaded.permits=true;} }]],
+    fuel:         [['/fuelRequests', function(v){ if(v){FUEL_REQUESTS=Object.values(v);} }]],
+    reqforms:     [['/fuelRequests', function(v){ if(v){FUEL_REQUESTS=Object.values(v);} }]],
+    renewals:     [['/renewalReqs',  function(v){ if(v){RENEWAL_REQS=Object.values(v);} }]],
+    deductions:   [['/deductions',   function(v){ if(v){DEDUCTIONS=Object.values(v);} }],
+                   ['/deductionPmts',function(v){ if(v){DEDUCTION_PMTS=Object.values(v);} }]],
+    budget:       [['/releases',     function(v){ if(v){RELEASES=Object.values(v);} }],
+                   ['/trips',        function(v){ if(v){TRIPS=Object.values(v);} }],
+                   ['/permits',      function(v){ if(v){PERMITS=Object.values(v);} }]],
+    driveraccts:  [['/trips',        function(v){ if(v){TRIPS=Object.values(v);} }]],
+    agents:       [['/agentAccounts',function(v){ if(v){AGENT_ACCOUNTS=Object.values(v);} }],
+                   ['/agentExpenses',function(v){ if(v){AGENT_EXPENSES=Object.values(v);} }]],
+    invoicing:    [['/invoices',     function(v){ if(v){INVOICES=Object.values(v);} }]],
+  };
+
+  var _lastSyncedAt = null;
+
+  _fbDb.ref('/ak_trips/_meta/lastSyncedAt').on('value', function(snap) {
+    var ts = snap.val();
+    // Skip the initial fire (that's just the startup read, data already loaded)
+    if (_lastSyncedAt === null) { _lastSyncedAt = ts; setSyncStatus('on'); return; }
+    // Skip if timestamp hasn't actually changed
+    if (ts === _lastSyncedAt) return;
+    _lastSyncedAt = ts;
+
+    setSyncStatus('on');
+    _bgSyncWasOffline = false;
+    updateBadges();
+
+    // Fetch only what the current view needs
+    var collections = _viewCollections[currentView];
+    if (!collections || !collections.length) return;
+    if (document.querySelector('.overlay:not(.hidden)')) return; // modal open - skip
+
+    Promise.all(collections.map(function(pair) {
+      return _fbDb.ref('/ak_trips' + pair[0]).once('value').then(function(s) {
+        pair[1](s.val());
+      });
+    })).then(function() {
+      var _scrollY = window.scrollY;
+      var _renders = {
+        releases:renderReleases, alltrips:renderTrips, waitingload:renderTrips,
+        intransit:renderTrips, completed:renderTrips, shortage:renderShortage,
+        deductions:renderDeductions, permits:renderPermits, driveraccts:renderDriverAccounts,
+        agents:renderAgents, invoicing:renderInvoicing, fuel:renderFuelRequests,
+        reqforms:renderFuelRequests, budget:renderBudget, settings:renderSettings
+      };
+      try { if(_renders[currentView]) _renders[currentView](); } catch(e){}
+      window.scrollTo(0, _scrollY);
+    }).catch(function() {
       _bgSyncWasOffline = true;
       setSyncStatus('er');
-      Logger && Logger.log && Logger.log('Firebase listener error: ' + err.message);
     });
+
+  }, function(err) {
+    _bgSyncWasOffline = true;
+    setSyncStatus('er');
   });
 }
 

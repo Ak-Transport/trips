@@ -2893,6 +2893,9 @@ async function _prepareView(v){
 
 async function switchView(v){
   currentView=v;
+  // Update listeners for new view - attach only what this view needs,
+  // detach everything else. Prevents stale/duplicate listeners.
+  if (typeof _syncListenersForView === 'function') _syncListenersForView(v);
   document.querySelectorAll('[id^="view-"]').forEach(function(el){el.style.display='none';el.classList.add('hidden');});
   var t=document.getElementById('view-'+v);
   if(t){t.style.display='flex';t.classList.remove('hidden');}
@@ -3215,84 +3218,127 @@ function _pickLandingView(){
   return 'settings';
 }
 
+// ── BACKGROUND SYNC STATE ────────────────────────────────────────
+var _activeListeners = {};   // path → Firebase listener ref (prevent duplicates)
+var _debounceTimers  = {};   // collectionName → setTimeout handle
+var _fetchingNow     = {};   // collectionName → bool (in-flight guard)
+
+// Per-view: which collection timestamps to watch, and how to refresh
+// each one. Structure: { collectionName: { fetch, apply } }
+var _viewSyncConfig = {
+  releases:    { collections: ['releases'],     fetch: function(){ return fbRead('/releases');     }, apply: function(r){ RELEASES=r.records; _loaded.releases=true; } },
+  alltrips:    { collections: ['trips'],        fetch: function(){ return fbRead('/trips');        }, apply: function(r){ TRIPS=r.records; } },
+  waitingload: { collections: ['trips'],        fetch: function(){ return fbRead('/trips');        }, apply: function(r){ TRIPS=r.records; } },
+  intransit:   { collections: ['trips'],        fetch: function(){ return fbRead('/trips');        }, apply: function(r){ TRIPS=r.records; } },
+  completed:   { collections: ['trips'],        fetch: function(){ return fbRead('/trips');        }, apply: function(r){ TRIPS=r.records; } },
+  shortage:    { collections: ['trips'],        fetch: function(){ return fbRead('/trips');        }, apply: function(r){ TRIPS=r.records; } },
+  permits:     { collections: ['permits'],      fetch: function(){ return fbRead('/permits');      }, apply: function(r){ PERMITS=r.records; _loaded.permits=true; } },
+  fuel:        { collections: ['fuelRequests'], fetch: function(){ return fbRead('/fuelRequests'); }, apply: function(r){ FUEL_REQUESTS=r.records; } },
+  reqforms:    { collections: ['fuelRequests'], fetch: function(){ return fbRead('/fuelRequests'); }, apply: function(r){ FUEL_REQUESTS=r.records; } },
+  deductions:  { collections: ['deductions','deductionPmts'],
+                 fetch: function(){ return Promise.all([fbRead('/deductions'),fbRead('/deductionPmts')]); },
+                 apply: function(r){ DEDUCTIONS=r[0].records; DEDUCTION_PMTS=r[1].records; }, multi: true },
+  agents:      { collections: ['agentAccounts','agentExpenses'],
+                 fetch: function(){ return Promise.all([fbRead('/agentAccounts'),fbRead('/agentExpenses')]); },
+                 apply: function(r){ AGENT_ACCOUNTS=r[0].records; AGENT_EXPENSES=r[1].records; }, multi: true },
+  invoicing:   { collections: ['invoices'],     fetch: function(){ return fbRead('/invoices');     }, apply: function(r){ INVOICES=r.records; } },
+  budget:      { collections: ['releases','trips','permits'],
+                 fetch: function(){ return Promise.all([fbRead('/releases'),fbRead('/trips'),fbRead('/permits')]); },
+                 apply: function(r){ RELEASES=r[0].records; TRIPS=r[1].records; PERMITS=r[2].records; }, multi: true },
+  driveraccts: { collections: ['trips'],        fetch: function(){ return fbRead('/trips');        }, apply: function(r){ TRIPS=r.records; } },
+};
+
+var _renders = {
+  releases:renderReleases, alltrips:renderTrips, waitingload:renderTrips,
+  intransit:renderTrips, completed:renderTrips, shortage:renderShortage,
+  deductions:renderDeductions, permits:renderPermits, driveraccts:renderDriverAccounts,
+  agents:renderAgents, invoicing:renderInvoicing, fuel:renderFuelRequests,
+  reqforms:renderFuelRequests, budget:renderBudget, settings:renderSettings
+};
+
+function _doViewRefresh(view) {
+  var config = _viewSyncConfig[view];
+  if (!config) return;
+  if (document.querySelector('.overlay:not(.hidden)')) return;
+  var key = config.collections.join(',');
+  if (_fetchingNow[key]) return;
+  _fetchingNow[key] = true;
+  var _scrollY = window.scrollY;
+  config.fetch().then(function(r) {
+    // Deduplicate by id before applying - prevents double-entry when
+    // an optimistic local insert exists alongside the Firebase record
+    if (!config.multi && r.records) {
+      var seen = {};
+      r.records = r.records.filter(function(rec) {
+        if (!rec.id || seen[rec.id]) return false;
+        seen[rec.id] = true; return true;
+      });
+    }
+    config.apply(r);
+    try { if (_renders[view]) _renders[view](); } catch(e) {}
+    window.scrollTo(0, _scrollY);
+    updateBadges();
+    setSyncStatus('on');
+  }).catch(function() {
+    setSyncStatus('er');
+  }).then(function() {
+    _fetchingNow[key] = false;
+  });
+}
+
+// Attach a per-collection timestamp listener. Debounces rapid saves.
+// Prevents duplicate listeners on the same path.
+function _attachCollectionListener(collectionName) {
+  if (!_fbDb) return;
+  var path = '/ak_trips/_meta/' + collectionName + '_updatedAt';
+  if (_activeListeners[path]) return; // already listening - skip
+
+  var _initialFire = true;
+  var ref = _fbDb.ref(path);
+  ref.on('value', function(snap) {
+    if (_initialFire) { _initialFire = false; return; } // skip startup read
+    // Debounce: wait 400ms after last change before fetching
+    // Collapses rapid bulk saves into a single fetch
+    clearTimeout(_debounceTimers[collectionName]);
+    _debounceTimers[collectionName] = setTimeout(function() {
+      if (currentView && _viewSyncConfig[currentView] &&
+          _viewSyncConfig[currentView].collections.indexOf(collectionName) !== -1) {
+        _doViewRefresh(currentView);
+      }
+    }, 400);
+  }, function() { setSyncStatus('er'); });
+
+  _activeListeners[path] = ref;
+}
+
+// Detach listeners for collections not needed by current view
+function _detachUnusedListeners(neededCollections) {
+  Object.keys(_activeListeners).forEach(function(path) {
+    var colName = path.split('/').pop().replace('_updatedAt','');
+    if (neededCollections.indexOf(colName) === -1) {
+      _activeListeners[path].off('value');
+      delete _activeListeners[path];
+    }
+  });
+}
+
+// Called on every navigation - attaches only what the new view needs,
+// detaches everything else to prevent stale listeners accumulating.
+function _syncListenersForView(view) {
+  if (!_fbDb) return;
+  var config = _viewSyncConfig[view];
+  var needed = config ? config.collections : [];
+  _detachUnusedListeners(needed);
+  needed.forEach(function(col) { _attachCollectionListener(col); });
+}
+
 function _startBackgroundSync(){
   if (_bgSyncTimer) return;
   _bgSyncTimer = true;
   if (!_fbDb) return;
-
-  // ── OPTION 2: Single timestamp listener + targeted fetches ──────
-  // Instead of listening to entire collections (which pushes full
-  // datasets to every browser on every save), we listen ONLY to the
-  // /_meta/lastSyncedAt timestamp (~100 bytes). When it changes,
-  // we fetch ONLY what the current view actually needs.
-  // This reduces downloads by ~95% vs full-collection listeners.
-
-  // Map each view to the collections it actually needs refreshed
-  var _viewCollections = {
-    releases:     [['/releases',     function(v){ if(v){RELEASES=Object.values(v);_loaded.releases=true;} }]],
-    alltrips:     [['/trips',        function(v){ if(v){TRIPS=Object.values(v);} }]],
-    waitingload:  [['/trips',        function(v){ if(v){TRIPS=Object.values(v);} }]],
-    intransit:    [['/trips',        function(v){ if(v){TRIPS=Object.values(v);} }]],
-    completed:    [['/trips',        function(v){ if(v){TRIPS=Object.values(v);} }]],
-    shortage:     [['/trips',        function(v){ if(v){TRIPS=Object.values(v);} }]],
-    permits:      [['/permits',      function(v){ if(v){PERMITS=Object.values(v);_loaded.permits=true;} }]],
-    fuel:         [['/fuelRequests', function(v){ if(v){FUEL_REQUESTS=Object.values(v);} }]],
-    reqforms:     [['/fuelRequests', function(v){ if(v){FUEL_REQUESTS=Object.values(v);} }]],
-    renewals:     [['/renewalReqs',  function(v){ if(v){RENEWAL_REQS=Object.values(v);} }]],
-    deductions:   [['/deductions',   function(v){ if(v){DEDUCTIONS=Object.values(v);} }],
-                   ['/deductionPmts',function(v){ if(v){DEDUCTION_PMTS=Object.values(v);} }]],
-    budget:       [['/releases',     function(v){ if(v){RELEASES=Object.values(v);} }],
-                   ['/trips',        function(v){ if(v){TRIPS=Object.values(v);} }],
-                   ['/permits',      function(v){ if(v){PERMITS=Object.values(v);} }]],
-    driveraccts:  [['/trips',        function(v){ if(v){TRIPS=Object.values(v);} }]],
-    agents:       [['/agentAccounts',function(v){ if(v){AGENT_ACCOUNTS=Object.values(v);} }],
-                   ['/agentExpenses',function(v){ if(v){AGENT_EXPENSES=Object.values(v);} }]],
-    invoicing:    [['/invoices',     function(v){ if(v){INVOICES=Object.values(v);} }]],
-  };
-
-  var _lastSyncedAt = null;
-
-  _fbDb.ref('/ak_trips/_meta/lastSyncedAt').on('value', function(snap) {
-    var ts = snap.val();
-    // Skip the initial fire (that's just the startup read, data already loaded)
-    if (_lastSyncedAt === null) { _lastSyncedAt = ts; setSyncStatus('on'); return; }
-    // Skip if timestamp hasn't actually changed
-    if (ts === _lastSyncedAt) return;
-    _lastSyncedAt = ts;
-
-    setSyncStatus('on');
-    _bgSyncWasOffline = false;
-    updateBadges();
-
-    // Fetch only what the current view needs
-    var collections = _viewCollections[currentView];
-    if (!collections || !collections.length) return;
-    if (document.querySelector('.overlay:not(.hidden)')) return; // modal open - skip
-
-    Promise.all(collections.map(function(pair) {
-      return _fbDb.ref('/ak_trips' + pair[0]).once('value').then(function(s) {
-        pair[1](s.val());
-      });
-    })).then(function() {
-      var _scrollY = window.scrollY;
-      var _renders = {
-        releases:renderReleases, alltrips:renderTrips, waitingload:renderTrips,
-        intransit:renderTrips, completed:renderTrips, shortage:renderShortage,
-        deductions:renderDeductions, permits:renderPermits, driveraccts:renderDriverAccounts,
-        agents:renderAgents, invoicing:renderInvoicing, fuel:renderFuelRequests,
-        reqforms:renderFuelRequests, budget:renderBudget, settings:renderSettings
-      };
-      try { if(_renders[currentView]) _renders[currentView](); } catch(e){}
-      window.scrollTo(0, _scrollY);
-    }).catch(function() {
-      _bgSyncWasOffline = true;
-      setSyncStatus('er');
-    });
-
-  }, function(err) {
-    _bgSyncWasOffline = true;
-    setSyncStatus('er');
-  });
+  // Listeners are attached per-view via _syncListenersForView()
+  // called from switchView() - nothing to start here globally
+  setSyncStatus('on');
 }
 
 // Applies a startup bundle (from cache OR a live fetch) to app state

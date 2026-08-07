@@ -3271,8 +3271,6 @@ function _doViewRefresh(view) {
   var key = config.collections.join(',');
 
   if (_fetchingNow[key]) {
-    // A fetch is already running — mark pending so we do one
-    // catch-up fetch after it completes rather than dropping this trigger
     _pendingFetch[key] = true;
     return;
   }
@@ -3281,12 +3279,19 @@ function _doViewRefresh(view) {
   _pendingFetch[key] = false;
   var _scrollY = window.scrollY;
 
-  // Read _meta to decide single-record patch vs full fetch
+  // If any collection for this view hasn't been fully loaded from
+  // Firebase yet, force a full collection fetch instead of single-record
+  // patch. A single-record patch on stale localStorage cache data would
+  // leave other records at their old (incorrect) status.
+  var _allFullyLoaded = config.collections.every(function(col) {
+    return _loaded[col] === true;
+  });
+
   _fbDb.ref('/ak_trips/_meta').once('value').then(function(metaSnap) {
     var meta = metaSnap.val() || {};
     var collections = config.collections;
 
-    var canPatch = collections.every(function(col) {
+    var canPatch = _allFullyLoaded && collections.every(function(col) {
       var op = meta[col + '_lastOp'];
       var id = meta[col + '_lastId'];
       return id && (op === 'add' || op === 'update' || op === 'delete');
@@ -3324,6 +3329,8 @@ function _doViewRefresh(view) {
         });
       }));
     } else {
+      // Full collection fetch: either batch op, or collection not yet
+      // fully loaded (first listener fire after cache restore)
       return config.fetch().then(function(r) {
         if (!config.multi && r.records) {
           var seen = {};
@@ -3333,6 +3340,8 @@ function _doViewRefresh(view) {
           });
         }
         config.apply(r);
+        // Mark collections as fully loaded after first successful full fetch
+        collections.forEach(function(col) { _loaded[col] = true; });
       });
     }
   }).then(function() {
@@ -3344,7 +3353,6 @@ function _doViewRefresh(view) {
     setSyncStatus('er');
   }).then(function() {
     _fetchingNow[key] = false;
-    // If a change arrived while we were fetching, do one catch-up fetch
     if (_pendingFetch[key]) {
       _pendingFetch[key] = false;
       _doViewRefresh(view);
@@ -3429,8 +3437,16 @@ function _applyStartupBundle(bundle, opts){
   VEHICLES = bundle.vehicles || [];
   USERS    = bundle.users    || [];
   RELEASES = bundle.releases || [];
-  // Releases is now loaded, so opening that page won't refetch it.
   _loaded.releases = true;
+
+  // Apply trips if included in bundle (prevents stale localStorage cache
+  // from showing wrong statuses after data changes while tab was closed)
+  if (bundle.trips && bundle.trips.length) {
+    TRIPS = bundle.trips;
+    _loaded.trips = true;
+    // Save to localStorage so next load also starts with correct data
+    _saveDatasetCache('trips', TRIPS);
+  }
 
   // All permits now arrive in the startup bundle - seed PERMITS
   // The backend isolates a failure in any one piece (settings /
@@ -3565,7 +3581,8 @@ async function loadAppData(){
         _fbDb.ref('/ak_trips/vehicles').once('value'),
         _fbDb.ref('/ak_trips/users').once('value'),
         _fbDb.ref('/ak_trips/releases').once('value'),
-        _fbDb.ref('/ak_trips/permits').once('value')
+        _fbDb.ref('/ak_trips/permits').once('value'),
+        _fbDb.ref('/ak_trips/trips').once('value')
       ]);
       _startupBundle = {
         settings: _fbResults[0].val() || {},
@@ -3573,7 +3590,8 @@ async function loadAppData(){
         vehicles: _fbResults[2].val() ? Object.values(_fbResults[2].val()) : [],
         users:    _fbResults[3].val() ? Object.values(_fbResults[3].val()) : [],
         releases: _fbResults[4].val() ? Object.values(_fbResults[4].val()) : [],
-        permits:  _fbResults[5].val() ? Object.values(_fbResults[5].val()) : []
+        permits:  _fbResults[5].val() ? Object.values(_fbResults[5].val()) : [],
+        trips:    _fbResults[6].val() ? Object.values(_fbResults[6].val()) : []
       };
     } catch(e) {
       _startupError = e;

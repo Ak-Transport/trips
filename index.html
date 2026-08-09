@@ -3228,25 +3228,25 @@ var _pendingFetch    = {};   // collectionName → bool (change arrived during f
 // each one. Structure: { collectionName: { fetch, apply } }
 var _viewSyncConfig = {
   releases:    { collections: ['releases'],     fetch: function(){ return fbRead('/releases');     }, apply: function(r){ RELEASES=r.records; _loaded.releases=true; } },
-  alltrips:    { collections: ['trips'],        fetch: function(){ return fbRead('/trips');        }, apply: function(r){ TRIPS=r.records; } },
-  waitingload: { collections: ['trips'],        fetch: function(){ return fbRead('/trips');        }, apply: function(r){ TRIPS=r.records; } },
-  intransit:   { collections: ['trips'],        fetch: function(){ return fbRead('/trips');        }, apply: function(r){ TRIPS=r.records; } },
-  completed:   { collections: ['trips'],        fetch: function(){ return fbRead('/trips');        }, apply: function(r){ TRIPS=r.records; } },
-  shortage:    { collections: ['trips'],        fetch: function(){ return fbRead('/trips');        }, apply: function(r){ TRIPS=r.records; } },
+  alltrips:    { collections: ['trips'],        fetch: function(){ return fbRead('/trips');        }, apply: function(r){ TRIPS=r.records; _loaded.trips=true; } },
+  waitingload: { collections: ['trips'],        fetch: function(){ return fbRead('/trips');        }, apply: function(r){ TRIPS=r.records; _loaded.trips=true; } },
+  intransit:   { collections: ['trips'],        fetch: function(){ return fbRead('/trips');        }, apply: function(r){ TRIPS=r.records; _loaded.trips=true; } },
+  completed:   { collections: ['trips'],        fetch: function(){ return fbRead('/trips');        }, apply: function(r){ TRIPS=r.records; _loaded.trips=true; } },
+  shortage:    { collections: ['trips'],        fetch: function(){ return fbRead('/trips');        }, apply: function(r){ TRIPS=r.records; _loaded.trips=true; } },
   permits:     { collections: ['permits'],      fetch: function(){ return fbRead('/permits');      }, apply: function(r){ PERMITS=r.records; _loaded.permits=true; } },
-  fuel:        { collections: ['fuelRequests'], fetch: function(){ return fbRead('/fuelRequests'); }, apply: function(r){ FUEL_REQUESTS=r.records; } },
-  reqforms:    { collections: ['fuelRequests'], fetch: function(){ return fbRead('/fuelRequests'); }, apply: function(r){ FUEL_REQUESTS=r.records; } },
+  fuel:        { collections: ['fuelRequests'], fetch: function(){ return fbRead('/fuelRequests'); }, apply: function(r){ FUEL_REQUESTS=r.records; _loaded.fuelRequests=true; } },
+  reqforms:    { collections: ['fuelRequests'], fetch: function(){ return fbRead('/fuelRequests'); }, apply: function(r){ FUEL_REQUESTS=r.records; _loaded.fuelRequests=true; } },
   deductions:  { collections: ['deductions','deductionPmts'],
                  fetch: function(){ return Promise.all([fbRead('/deductions'),fbRead('/deductionPmts')]); },
-                 apply: function(r){ DEDUCTIONS=r[0].records; DEDUCTION_PMTS=r[1].records; }, multi: true },
+                 apply: function(r){ DEDUCTIONS=r[0].records; DEDUCTION_PMTS=r[1].records; _loaded.deductions=true; }, multi: true },
   agents:      { collections: ['agentAccounts','agentExpenses'],
                  fetch: function(){ return Promise.all([fbRead('/agentAccounts'),fbRead('/agentExpenses')]); },
-                 apply: function(r){ AGENT_ACCOUNTS=r[0].records; AGENT_EXPENSES=r[1].records; }, multi: true },
-  invoicing:   { collections: ['invoices'],     fetch: function(){ return fbRead('/invoices');     }, apply: function(r){ INVOICES=r.records; } },
+                 apply: function(r){ AGENT_ACCOUNTS=r[0].records; AGENT_EXPENSES=r[1].records; _loaded.agentAccounts=true; }, multi: true },
+  invoicing:   { collections: ['invoices'],     fetch: function(){ return fbRead('/invoices');     }, apply: function(r){ INVOICES=r.records; _loaded.invoices=true; } },
   budget:      { collections: ['releases','trips','permits'],
                  fetch: function(){ return Promise.all([fbRead('/releases'),fbRead('/trips'),fbRead('/permits')]); },
-                 apply: function(r){ RELEASES=r[0].records; TRIPS=r[1].records; PERMITS=r[2].records; }, multi: true },
-  driveraccts: { collections: ['trips'],        fetch: function(){ return fbRead('/trips');        }, apply: function(r){ TRIPS=r.records; } },
+                 apply: function(r){ RELEASES=r[0].records; TRIPS=r[1].records; PERMITS=r[2].records; _loaded.releases=true; _loaded.trips=true; _loaded.permits=true; }, multi: true },
+  driveraccts: { collections: ['trips'],        fetch: function(){ return fbRead('/trips');        }, apply: function(r){ TRIPS=r.records; _loaded.trips=true; } },
 };
 
 // _renders is a function (not an object) so render functions defined in
@@ -3333,6 +3333,15 @@ function _doViewRefresh(view) {
       // fully loaded (first listener fire after cache restore)
       return config.fetch().then(function(r) {
         if (!config.multi && r.records) {
+          // Never overwrite existing data with an empty result — 
+          // an empty fetch likely means Firebase had a transient issue
+          if (r.records.length === 0 && RELEASES.length > 0 && config.collections.indexOf('releases') >= 0) {
+            // Firebase returned empty but we have data — skip overwrite
+            return;
+          }
+          if (r.records.length === 0 && TRIPS.length > 0 && config.collections.indexOf('trips') >= 0) {
+            return;
+          }
           var seen = {};
           r.records = r.records.filter(function(rec) {
             if (!rec.id || seen[rec.id]) return false;
@@ -3631,11 +3640,13 @@ async function loadAppData(){
   // arrives, badges and whatever view is currently open just refresh
   // quietly to reflect it.
   try{
+    // Tier 2: Read agents/invoices/renewalReqs from Firebase (faster, no Apps Script quota)
+    // Older releases/trips still need Apps Script since Firebase only holds recent records
     var secondaryFns=[
-      function(){return callAPI('getAgentAccounts');},
-      function(){return callAPI('getAgentExpenses');},
-      function(){return callAPI('getInvoices');},
-      function(){return callAPI('getRenewalReqs');},
+      function(){return fbRead('/agentAccounts').then(function(r){return {records:r.records||[]};}).catch(function(){return callAPI('getAgentAccounts');});},
+      function(){return fbRead('/agentExpenses').then(function(r){return {records:r.records||[]};}).catch(function(){return callAPI('getAgentExpenses');});},
+      function(){return fbRead('/invoices').then(function(r){return {records:r.records||[]};}).catch(function(){return callAPI('getInvoices');});},
+      function(){return fbRead('/renewalReqs').then(function(r){return {records:r.records||[]};}).catch(function(){return callAPI('getRenewalReqs');});},
       function(){return callAPI('getOlderReleases',{beforeDate:_recentCutoffStr});},
       function(){return callAPI('getOlderTrips',{beforeDate:_recentCutoffStr});}
     ];
@@ -3654,6 +3665,10 @@ async function loadAppData(){
     // any session where the dataset is complete enough to be worth
     // caching for the next visit's instant paint.
     _saveDatasetCache('trips', TRIPS);
+    _loaded.agentAccounts = true;
+    _loaded.agentExpenses = true;
+    _loaded.invoices = true;
+    _loaded.renewalReqs = true;
     var _secondaryNames = ['Agent Accounts','Agent Expenses','Invoices','Renewal Requests','Older Releases','Older Trips'];
     var _failedSecondary = rs2.map(function(x,i){ return x.status==='rejected' ? _secondaryNames[i] : null; }).filter(Boolean);
     if (_failedSecondary.length) toast('Failed to load: '+_failedSecondary.join(', ')+' — try Refresh','er');
@@ -3866,6 +3881,16 @@ function _printFormWindow(opts) {
 function fmt(n){return parseFloat(n||0).toLocaleString(undefined,{minimumFractionDigits:0,maximumFractionDigits:0});}
 function today(){return new Date().toISOString().split('T')[0];}
 function fmtDate(d){if(!d)return '—';var dt=new Date(d);return isNaN(dt)?d:dt.toLocaleDateString('en-GB',{day:'2-digit',month:'short',year:'numeric'});}
+// Convert any date string to YYYY-MM-DD for HTML date inputs
+function toDateInput(val){
+  if(!val)return '';
+  var s=String(val).trim();if(!s)return '';
+  if(/^\d{4}-\d{2}-\d{2}$/.test(s))return s;
+  var m=s.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})$/);
+  if(m)return m[3]+'-'+m[2].padStart(2,'0')+'-'+m[1].padStart(2,'0');
+  var d=new Date(s);if(!isNaN(d))return d.toISOString().split('T')[0];
+  return '';
+}
 function toYMD(d){
   if(!d) return '';
   if(d instanceof Date){ if(isNaN(d)) return ''; return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'); }
@@ -4030,7 +4055,10 @@ async function submitAllReleases(){
         var docPrefix = 'ar-doc-' + rec._lineN;
         rec.docUrl = await _uploadReleaseDocIfNeeded(docPrefix, rec.releaseNo);
         delete rec._lineN;
-        await callAPI('addRelease', {record: rec});
+        var _relRes = await callAPI('addRelease', {record: rec});
+        if (_relRes && _relRes.id) rec.id = _relRes.id;
+        if (_relRes && _relRes.releaseNo) rec.releaseNo = _relRes.releaseNo;
+        RELEASES.push(rec);
       } catch(e) { errors++; }
     }
     if (errors === 0) {
@@ -4194,7 +4222,7 @@ async function saveTrip(addAnother){
     var allow=lQty*0.003,actual=Math.max(0,lQty-oQty),excess=Math.max(0,actual-allow);
     var record={id:editingId||uuid(),tripNo:document.getElementById('trp-no').value,releaseId:releaseId,releaseNo:rel?rel.releaseNo:'',releaseDate:rel?rel.releaseDate:'',loadingDate:loadDate,offloadingDate:document.getElementById('trp-offloading-date').value,horse:horse,trailer:trailer,driver:driver,customer:rel?rel.customer:'',loadingPoint:rel?rel.loadingPoint:'',destination:rel?rel.destination:'',border:rel?rel.border:'',border2:rel?(rel.border2||''):'',product:rel?rel.product:'',akInvoiceNo:document.getElementById('trp-invoice-no').value.toUpperCase(),tradeRef:document.getElementById('trp-traderef').value.toUpperCase(),subTransporter:document.getElementById('trp-subtransporter').value.toUpperCase(),loadedQty:lQty,offloadedQty:oQty,allowableLoss:allow.toFixed(2),actualLoss:actual.toFixed(2),excessLoss:excess.toFixed(2),ratePerLitre:parseFloat(document.getElementById('trp-rate-ltr').value)||0,notes:document.getElementById('trp-notes').value,status:'IN TRANSIT'};
     if(editingId){await callAPI('updateTrip',{record:record});var idx=TRIPS.findIndex(function(t){return t.id===editingId;});if(idx>=0)TRIPS[idx]=record;toast('Trip updated ✓','ok');addAnother=false;}
-    else{await callAPI('addTrip',{record:record});toast('Trip '+esc(record.tripNo)+' created ✓ ('+esc(horse)+')','ok');}
+    else{var _tripRes=await callAPI('addTrip',{record:record});if(_tripRes&&_tripRes.id)record.id=_tripRes.id;if(_tripRes&&_tripRes.tripNo)record.tripNo=_tripRes.tripNo;TRIPS.push(record);toast('Trip '+esc(record.tripNo)+' created ✓ ('+esc(horse)+')','ok');}
     updateBadges();renderTrips();renderBudget();
     if(addAnother){
       // Keep modal open, keep same release, reset vehicle/driver/cargo fields
@@ -4388,7 +4416,18 @@ function renderTrips(){
 // ── TRIP EDIT/DELETE WITH PASSWORD PROTECTION ─────────────────────
 function tripEditClick(id) {
   var t = TRIPS.find(function(x){ return x.id===id; });
-  if(!t) return;
+  if(!t) {
+    // TRIPS may have been wiped by a batch refresh — re-fetch and retry
+    fbRead('/trips').then(function(r){
+      if(r&&r.records){ TRIPS=r.records; _loaded.trips=true; }
+      var t2 = TRIPS.find(function(x){ return x.id===id; });
+      if(!t2){ toast('Trip record not found — please refresh','er'); return; }
+      if(tripNeedsEditPwd(t2)){
+        askTripPassword('This trip is COMPLETED.\nEnter admin password to edit.', function(){ editTrip(id); });
+      } else { editTrip(id); }
+    });
+    return;
+  }
   if(tripNeedsEditPwd(t)) {
     askTripPassword('This trip is COMPLETED.\nEnter admin password to edit.', function(){ editTrip(id); });
   } else { editTrip(id); }
@@ -4482,8 +4521,8 @@ function bulkEditTrips() {
       +fg('Trailer *','<select id="bet-trailer-'+n+'" style="'+fs+'"><option value="">Select...</option>'+trailerOpts+'</select>',true)
       +fg('Driver *','<select id="bet-driver-'+n+'" style="'+fs+'"><option value="">Select...</option>'+driverOpts+'</select>',true)
       +fg('Sub Transporter','<input type="text" id="bet-sub-'+n+'" value="'+esc(t.subTransporter||'')+'" style="'+fs+';text-transform:uppercase">',false)
-      +fg('Loading Date','<input type="date" id="bet-loaddate-'+n+'" value="'+(t.loadingDate||'')+'" style="'+fs+';padding:0 8px" onchange="onBetLoadDateChange('+n+')">',false)
-      +fg('Offloading Date','<input type="date" id="bet-offdate-'+n+'" value="'+(t.offloadingDate||'')+'" style="'+fs+';padding:0 8px" onchange="onBetOffDateChange('+n+')">',false)
+      +fg('Loading Date','<input type="date" id="bet-loaddate-'+n+'" value="'+(toDateInput(t.loadingDate)||'')+'" style="'+fs+';padding:0 8px" onchange="onBetLoadDateChange('+n+')">',false)
+      +fg('Offloading Date','<input type="date" id="bet-offdate-'+n+'" value="'+(toDateInput(t.offloadingDate)||'')+'" style="'+fs+';padding:0 8px" onchange="onBetOffDateChange('+n+')">',false)
       +fg('Status','<select id="bet-status-'+n+'" style="'+fs+'">'+statusOpts+'</select>',false)
       +'</div>'
       +'<div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px">'
@@ -4855,12 +4894,88 @@ function exportTripsPDF(view) {
       return '<td>'+esc(String(v))+'</td>';
     }).join('')+'</tr>';
   }).join('');
+
+  // ── SUMMARY CALCULATIONS ──────────────────────────────────────────
+  // Total Trucks Selected  = all trips in export
+  var totalSelected   = trips.length;
+  // Total Trucks Loaded    = trips where loadingDate AND loadedQty are both filled
+  var totalLoaded     = trips.filter(function(t){
+    return t.loadingDate && String(t.loadingDate).trim() &&
+           t.loadedQty   && parseFloat(t.loadedQty) > 0;
+  }).length;
+  // Total Trucks Offloaded = trips where offloadingDate AND offloadedQty are both filled
+  var totalOffloaded  = trips.filter(function(t){
+    return t.offloadingDate && String(t.offloadingDate).trim() &&
+           t.offloadedQty   && parseFloat(t.offloadedQty) > 0;
+  }).length;
+  // Total Volume Loaded at 20°C   = sum of loadedQty (only where loadingDate filled)
+  var totalVolLoaded  = trips.reduce(function(s,t){
+    return s + (t.loadingDate && String(t.loadingDate).trim() ? parseFloat(t.loadedQty||0) : 0);
+  }, 0);
+  // Total Volume Offloaded at 20°C = sum of offloadedQty (only where offloadingDate filled)
+  var totalVolOffloaded = trips.reduce(function(s,t){
+    return s + (t.offloadingDate && String(t.offloadingDate).trim() ? parseFloat(t.offloadedQty||0) : 0);
+  }, 0);
+
+  // ── SUMMARY PANEL HTML ────────────────────────────────────────────
+  var summaryHtml =
+    '<div style="margin-top:24px;border:2px solid #0a2d6e;border-radius:6px;overflow:hidden;page-break-inside:avoid">'+
+      '<div style="background:#0a2d6e;color:#fff;font-size:11px;font-weight:700;letter-spacing:.07em;text-transform:uppercase;padding:8px 14px">'+
+        'Export Summary'+
+      '</div>'+
+      '<div style="display:grid;grid-template-columns:repeat(5,1fr);gap:0">'+
+
+        // Card 1 — Total Trucks Selected
+        '<div style="border-right:1px solid #d0d8e8;padding:14px 16px;text-align:center">'+
+          '<div style="font-size:9px;color:#555;text-transform:uppercase;letter-spacing:.06em;margin-bottom:6px">Total Trucks<br>Selected</div>'+
+          '<div style="font-size:26px;font-weight:900;color:#0a2d6e;line-height:1">'+totalSelected+'</div>'+
+          '<div style="font-size:9px;color:#888;margin-top:4px">trucks</div>'+
+        '</div>'+
+
+        // Card 2 — Total Trucks Loaded
+        '<div style="border-right:1px solid #d0d8e8;padding:14px 16px;text-align:center">'+
+          '<div style="font-size:9px;color:#555;text-transform:uppercase;letter-spacing:.06em;margin-bottom:6px">Total Trucks<br>Loaded</div>'+
+          '<div style="font-size:26px;font-weight:900;color:#15803d;line-height:1">'+totalLoaded+'</div>'+
+          '<div style="font-size:9px;color:#888;margin-top:4px">trucks</div>'+
+        '</div>'+
+
+        // Card 3 — Total Trucks Offloaded
+        '<div style="border-right:1px solid #d0d8e8;padding:14px 16px;text-align:center">'+
+          '<div style="font-size:9px;color:#555;text-transform:uppercase;letter-spacing:.06em;margin-bottom:6px">Total Trucks<br>Offloaded</div>'+
+          '<div style="font-size:26px;font-weight:900;color:#0369a1;line-height:1">'+totalOffloaded+'</div>'+
+          '<div style="font-size:9px;color:#888;margin-top:4px">trucks</div>'+
+        '</div>'+
+
+        // Card 4 — Total Volume Loaded at 20°C
+        '<div style="border-right:1px solid #d0d8e8;padding:14px 16px;text-align:center">'+
+          '<div style="font-size:9px;color:#555;text-transform:uppercase;letter-spacing:.06em;margin-bottom:6px">Total Volume<br>Loaded @ 20°C</div>'+
+          '<div style="font-size:20px;font-weight:900;color:#15803d;line-height:1">'+fmt(totalVolLoaded)+'</div>'+
+          '<div style="font-size:9px;color:#888;margin-top:4px">litres</div>'+
+        '</div>'+
+
+        // Card 5 — Total Volume Offloaded at 20°C
+        '<div style="padding:14px 16px;text-align:center">'+
+          '<div style="font-size:9px;color:#555;text-transform:uppercase;letter-spacing:.06em;margin-bottom:6px">Total Volume<br>Offloaded @ 20°C</div>'+
+          '<div style="font-size:20px;font-weight:900;color:#0369a1;line-height:1">'+fmt(totalVolOffloaded)+'</div>'+
+          '<div style="font-size:9px;color:#888;margin-top:4px">litres</div>'+
+        '</div>'+
+
+      '</div>'+
+    '</div>';
+
   _printFormWindow({
     title: title,
     formTitle: title + ' (' + trips.length + ' trip' + (trips.length!==1?'s':'') + ')',
     theadHtml: '<tr>'+TRIP_EXPORT_HEADERS.map(function(h){return '<th>'+h+'</th>';}).join('')+'</tr>',
     tbodyHtml: rows,
-    noSignatures: true
+    noSignatures: true,
+    extraInfoHtml: '',
+    customBodyHtml:
+      '<table class="tbl-main" style="margin-bottom:20px">'+
+        '<thead><tr>'+TRIP_EXPORT_HEADERS.map(function(h){return '<th>'+h+'</th>';}).join('')+'</tr></thead>'+
+        '<tbody>'+rows+'</tbody>'+
+      '</table>'+
+      summaryHtml
   });
 }
 
@@ -5579,7 +5694,7 @@ window.savePermit = async function() {
       if (idx >= 0) PERMITS[idx] = record;
       toast('Permit updated ✓', 'ok');
     } else {
-      await callAPI('addPermit', {record: record});
+      var _epRes=await callAPI('addPermit', {record: record});if(_epRes&&_epRes.id)record.id=_epRes.id;PERMITS.push(record);
       toast('Permit recorded ✓', 'ok');
     }
     closeModal('modal-permit');
@@ -6337,9 +6452,15 @@ function exportReleasesExcel() {
 async function markTripCompleted(id){
   if(!confirm('Mark this trip as Completed?'))return;
   var t=TRIPS.find(function(x){return x.id===id;});if(!t)return;
+  var _prevStatus=t.status, _prevOffDate=t.offloadingDate;
   t.status='COMPLETED';t.offloadingDate=t.offloadingDate||today();
   try{await callAPI('updateTrip',{record:t});updateBadges();renderInTransit();toast('Trip marked Completed ✓','ok');await _syncReleaseStatusFromTrips(t.releaseId);}
-  catch(e){toast('Error: '+e.message,'er');}
+  catch(e){
+    // Rollback local state so UI stays consistent with server
+    t.status=_prevStatus; t.offloadingDate=_prevOffDate;
+    updateBadges(); renderInTransit();
+    toast('Error: '+e.message,'er');
+  }
 }
 // ── EDIT TRIP — FULL SCREEN PAGE ─────────────────────────────────
 var _editingTripId = null;
@@ -6381,8 +6502,8 @@ function editTrip(id) {
   setV('et-driver',      t.driver);
   setV('et-sub',         t.subTransporter||'');
   // AK Invoice No is no longer edited from this form.
-  setV('et-loaddate',    t.loadingDate||'');
-  setV('et-offdate',     t.offloadingDate||'');
+  setV('et-loaddate',    toDateInput(t.loadingDate)||'');
+  setV('et-offdate',     toDateInput(t.offloadingDate)||'');
   setV('et-loaded',      t.loadedQty||'');
   setV('et-offloaded',   t.offloadedQty||'');
   setV('et-allowloss',   t.allowableLoss||'');
@@ -6686,10 +6807,19 @@ function openAddDeduction() {
 }
 
 function editDeduction(id) {
-  var d=DEDUCTIONS.find(function(x){return x.id===id;});if(!d)return;
+  var d=DEDUCTIONS.find(function(x){return x.id===id;});
+  if(!d){
+    fbRead('/deductions').then(function(r){
+      if(r&&r.records){ DEDUCTIONS=r.records; _loaded.deductions=true; }
+      var d2=DEDUCTIONS.find(function(x){return x.id===id;});
+      if(!d2){ toast('Deduction record not found — please refresh','er'); return; }
+      editDeduction(id);
+    });
+    return;
+  }
   _openDeductionModalShell();
   document.getElementById('ded-id').value=d.id;
-  document.getElementById('ded-date').value=d.date||'';
+  document.getElementById('ded-date').value=toDateInput(d.date)||'';
   document.getElementById('ded-driver').value=d.driver||'';
   document.getElementById('ded-type').value=d.type||'';
   document.getElementById('ded-refno').value=d.refNo||'';
@@ -6800,6 +6930,7 @@ async function saveDedPayment() {
 async function approveDedPayment(paymentId, deductionId, btnEl) {
   var p=DEDUCTION_PMTS.find(function(x){return x.id===paymentId;});if(!p)return;
   if (btnEl) { if (btnEl.disabled) return; btnEl.disabled = true; btnEl.textContent = 'Approving...'; }
+  var _apPrev={status:p.status,approvedBy:p.approvedBy,approvedAt:p.approvedAt};
   p.status='APPROVED';
   p.approvedBy=CURRENT_USER?(CURRENT_USER.name||CURRENT_USER.username):'ADMIN';
   p.approvedAt=today();
@@ -6816,7 +6947,7 @@ async function approveDedPayment(paymentId, deductionId, btnEl) {
     }
     toast('Payment approved ✓','ok');
     openDedDetail(deductionId); renderDeductions();
-  }catch(e){toast('Error: '+e.message,'er'); if (btnEl) { btnEl.disabled = false; btnEl.textContent = 'Approve'; }}
+  }catch(e){p.status=_apPrev.status;p.approvedBy=_apPrev.approvedBy;p.approvedAt=_apPrev.approvedAt;toast('Error: '+e.message,'er'); if (btnEl) { btnEl.disabled = false; btnEl.textContent = 'Approve'; }}
 }
 
 async function rejectDedPayment(paymentId, deductionId, btnEl) {
@@ -6824,6 +6955,7 @@ async function rejectDedPayment(paymentId, deductionId, btnEl) {
   var reason = prompt('Reason for rejection (optional):');
   if (reason === null) return; // cancelled
   if (btnEl) { if (btnEl.disabled) return; btnEl.disabled = true; btnEl.textContent = 'Rejecting...'; }
+  var _rdPrev={status:p.status,rejectedBy:p.rejectedBy,rejectedAt:p.rejectedAt,rejectionReason:p.rejectionReason};
   p.status='REJECTED';
   p.rejectedBy=CURRENT_USER?(CURRENT_USER.name||CURRENT_USER.username):'ADMIN';
   p.rejectedAt=today();
@@ -6832,7 +6964,7 @@ async function rejectDedPayment(paymentId, deductionId, btnEl) {
     await callAPI('updateDeductionPayment',{record:p});
     toast('Payment rejected','ok');
     openDedDetail(deductionId); renderDeductions();
-  }catch(e){toast('Error: '+e.message,'er'); if (btnEl) { btnEl.disabled = false; btnEl.textContent = 'Reject'; }}
+  }catch(e){p.status=_rdPrev.status;p.rejectedBy=_rdPrev.rejectedBy;p.rejectedAt=_rdPrev.rejectedAt;p.rejectionReason=_rdPrev.rejectionReason;toast('Error: '+e.message,'er'); if (btnEl) { btnEl.disabled = false; btnEl.textContent = 'Reject'; }}
 }
 
 function openDedDetail(deductionId, readOnly) {
@@ -6990,7 +7122,7 @@ async function savePermit(){
   if(!vehicle||!type||!date){toast('Fill required fields','er');return;}
   try{
     var record={id:editingId||uuid(),vehicle:vehicle,vehicleType:document.getElementById('pmt-vtype').value,permitType:type,appliesTo:document.getElementById('pmt-applies').value,paymentDate:date,expiryDate:document.getElementById('pmt-expiry').value,amountPaid:document.getElementById('pmt-amount').value||0,receiptNo:document.getElementById('pmt-receipt').value,documentUrl:document.getElementById('pmt-docurl').value.trim(),status:'ACTIVE',notes:document.getElementById('pmt-notes').value};
-    await callAPI('addPermit',{record:record});
+    var _pRes=await callAPI('addPermit',{record:record});if(_pRes&&_pRes.id)record.id=_pRes.id;PERMITS.push(record);
     toast('Permit recorded ✓','ok');closeModal('modal-permit');updateBadges();renderPermits();
   }catch(e){toast('Error: '+e.message,'er');}
 }
@@ -7093,7 +7225,7 @@ async function saveTripFuelReq(){
   try{
     var price=parseFloat(SETTINGS.fuelPrice||3200);
     var record={id:uuid(),reqNo:nextId(FUEL_REQUESTS,'TFR-','reqNo'),requestType:'TRIP',tripId:tripId,tripNo:t?t.tripNo:'',horse:t?t.horse:'',driver:t?t.driver:'',route:t?t.destination:'',issuanceStage:stage,litres:litres,fuelPricePerLtr:price,amountTZS:litres*price,status:'PENDING',requestedBy:reqby.toUpperCase(),requestedAt:today(),notes:document.getElementById('tfuel-notes').value};
-    await callAPI('addFuelRequest',{record:record});
+    var _frRes=await callAPI('addFuelRequest',{record:record});if(_frRes&&_frRes.id)record.id=_frRes.id;FUEL_REQUESTS.push(record);
     toast('Fuel request submitted ✓','ok');closeModal('modal-trip-fuel');updateBadges();renderFuelRequests();
   }catch(e){toast('Error: '+e.message,'er');}
 }
@@ -7114,7 +7246,7 @@ async function saveGenFuelReq(){
   try{
     var price=parseFloat(SETTINGS.fuelPrice||3200);
     var record={id:uuid(),reqNo:nextId(FUEL_REQUESTS,'GFR-','reqNo'),requestType:'GENERAL',horse:vehicle,issuanceStage:'General',litres:litres,fuelPricePerLtr:price,amountTZS:litres*price,purpose:purpose,description:desc.toUpperCase(),status:'PENDING',requestedBy:reqby.toUpperCase(),requestedAt:date,notes:document.getElementById('gfuel-notes').value};
-    await callAPI('addFuelRequest',{record:record});
+    var _gfRes=await callAPI('addFuelRequest',{record:record});if(_gfRes&&_gfRes.id)record.id=_gfRes.id;FUEL_REQUESTS.push(record);
     toast('General fuel request submitted ✓','ok');closeModal('modal-gen-fuel');updateBadges();renderFuelRequests();
   }catch(e){toast('Error: '+e.message,'er');}
 }
@@ -7130,7 +7262,7 @@ function renderFuelRequests(){
       +'<td>'+(r.status==='PENDING'?'<button class="actbtn e" onclick="approveFuelReq(\''+r.id+'\')">Approve</button>':'')+'</td></tr>';
   }).join('');
 }
-async function approveFuelReq(id){var r=FUEL_REQUESTS.find(function(x){return x.id===id;});if(!r)return;r.status='APPROVED';r.approvedBy=CURRENT_USER?(CURRENT_USER.name||CURRENT_USER.username):'ADMIN';r.approvedAt=today();try{await callAPI('updateFuelRequest',{record:r});toast('Approved ✓','ok');updateBadges();renderFuelRequests();}catch(e){toast('Error: '+e.message,'er');}}
+async function approveFuelReq(id){var r=FUEL_REQUESTS.find(function(x){return x.id===id;});if(!r)return;var _fPrev={status:r.status,approvedBy:r.approvedBy,approvedAt:r.approvedAt};r.status='APPROVED';r.approvedBy=CURRENT_USER?(CURRENT_USER.name||CURRENT_USER.username):'ADMIN';r.approvedAt=today();try{await callAPI('updateFuelRequest',{record:r});toast('Approved ✓','ok');updateBadges();renderFuelRequests();}catch(e){r.status=_fPrev.status;r.approvedBy=_fPrev.approvedBy;r.approvedAt=_fPrev.approvedAt;toast('Error: '+e.message,'er');}}
 
 // ── SHORTAGE ──
 function renderShortage(){
@@ -7255,7 +7387,7 @@ function renderOpeningBalancesTable(){
   tbody.innerHTML=DRIVER_OPENING_BALANCES.map(function(r,i){
     return '<tr><td>'+_atSearchableField('ob-driver-'+i,'Search driver...',DRIVERS.map(function(d){return d.name||'';}).filter(Boolean),null)+'</td>'
       +'<td><input type="number" min="0" value="'+(r.openingBalanceTZS||'')+'" id="ob-amt-'+i+'" style="width:140px" placeholder="0"></td>'
-      +'<td><input type="date" value="'+(r.asOfDate||'')+'" id="ob-date-'+i+'" style="width:150px"></td>'
+      +'<td><input type="date" value="'+(toDateInput(r.asOfDate)||'')+'" id="ob-date-'+i+'" style="width:150px"></td>'
       +'<td><button onclick="deleteOpeningBalanceRow(\''+r.id+'\')" style="background:none;border:none;color:#b91c1c;cursor:pointer;font-size:14px">✕</button></td></tr>';
   }).join('');
   DRIVER_OPENING_BALANCES.forEach(function(r,i){
@@ -7875,7 +8007,7 @@ async function _quickRenewPermitConfirmed(vehicle, type, vType, existingPermit) 
       requestedBy: CURRENT_USER ? (CURRENT_USER.name||CURRENT_USER.username) : 'STAFF',
       notes: 'Renewal requested from Vehicle Permits page'
     };
-    await callAPI('addRenewalReq', {record: record});
+    var _rnRes=await callAPI('addRenewalReq', {record: record});if(_rnRes&&_rnRes.id)record.id=_rnRes.id;RENEWAL_REQS.push(record);
 
     // 2. Clear permit data — update permit record to blank payment/expiry/doc
     if (existingPermit) {
@@ -8229,7 +8361,15 @@ function openAddPermitForVehicle(plate) {
 // ── PHASE 2: EDIT PERMIT RECORD ───────────────────────────────────
 function editPermitRecord(id) {
   var p = PERMITS.find(function(x){ return x.id === id; });
-  if (!p) return;
+  if (!p) {
+    fbRead('/permits').then(function(r){
+      if(r&&r.records){ PERMITS=r.records; _loaded.permits=true; }
+      var p2=PERMITS.find(function(x){return x.id===id;});
+      if(!p2){ toast('Permit record not found — please refresh','er'); return; }
+      editPermitRecord(id);
+    });
+    return;
+  }
   editingId = id;
   _openPermitModalShell();
   setTimeout(function(){
@@ -8482,6 +8622,7 @@ window.renderFuelRequests = function() {
 async function approveRequest(id) {
   var r = FUEL_REQUESTS.find(function(x){ return x.id === id; });
   if (!r) return;
+  var _arPrev2={status:r.status,approvedBy:r.approvedBy,approvedAt:r.approvedAt};
   r.status = 'APPROVED';
   r.approvedBy = CURRENT_USER ? (CURRENT_USER.name || CURRENT_USER.username) : 'ADMIN';
   r.approvedAt = today();
@@ -8490,10 +8631,10 @@ async function approveRequest(id) {
     toast('Request approved ✓', 'ok');
     updateBadges();
     renderFuelRequests();
-  } catch(e) { toast('Error: ' + e.message, 'er'); }
+  } catch(e) { r.status=_arPrev2.status;r.approvedBy=_arPrev2.approvedBy;r.approvedAt=_arPrev2.approvedAt;toast('Error: ' + e.message, 'er'); }
 }
 
-// ── AUTO-CREATE SHORTAGE RECORD ON TRIP COMPLETION ───────────────
+// ── AUTO-CREATE SHORTAGE RECORD ON TRIP COMPLETION
 async function autoCreateShortageRecord(t) {
   if (!t || (t.status||'').toUpperCase() !== 'COMPLETED') return;
   var excess = parseFloat(t.excessLoss||0);
@@ -9860,6 +10001,7 @@ async function approveShortagePayment(paymentId, fuelLossId, btnEl) {
   var p = SHORTAGE_PMTS.find(function(x){ return x.id === paymentId; });
   if (!p) return;
   if (btnEl) { if (btnEl.disabled) return; btnEl.disabled = true; btnEl.textContent = 'Approving...'; }
+  var _asPrev={status:p.status,approvedBy:p.approvedBy,approvedAt:p.approvedAt};
   p.status = 'APPROVED';
   p.approvedBy = CURRENT_USER?(CURRENT_USER.name||CURRENT_USER.username):'ADMIN';
   p.approvedAt = today();
@@ -9884,7 +10026,7 @@ async function approveShortagePayment(paymentId, fuelLossId, btnEl) {
     toast('Payment approved ✓', 'ok');
     openShortageDetail(fuelLossId);
     updateBadges(); window.renderShortage();
-  } catch(e) { toast('Error: ' + e.message, 'er'); if (btnEl) { btnEl.disabled = false; btnEl.textContent = 'Approve'; } }
+  } catch(e) { p.status=_asPrev.status;p.approvedBy=_asPrev.approvedBy;p.approvedAt=_asPrev.approvedAt;toast('Error: ' + e.message, 'er'); if (btnEl) { btnEl.disabled = false; btnEl.textContent = 'Approve'; } }
 }
 
 async function rejectShortagePayment(paymentId, fuelLossId, btnEl) {
@@ -9893,6 +10035,7 @@ async function rejectShortagePayment(paymentId, fuelLossId, btnEl) {
   var reason = prompt('Reason for rejection (optional):');
   if (reason === null) return; // cancelled
   if (btnEl) { if (btnEl.disabled) return; btnEl.disabled = true; btnEl.textContent = 'Rejecting...'; }
+  var _rsp2Prev={status:p.status,rejectedBy:p.rejectedBy,rejectedAt:p.rejectedAt,rejectionReason:p.rejectionReason};
   p.status = 'REJECTED';
   p.rejectedBy = CURRENT_USER?(CURRENT_USER.name||CURRENT_USER.username):'ADMIN';
   p.rejectedAt = today();
@@ -9902,10 +10045,10 @@ async function rejectShortagePayment(paymentId, fuelLossId, btnEl) {
     toast('Payment rejected', 'ok');
     openShortageDetail(fuelLossId);
     updateBadges(); window.renderShortage();
-  } catch(e) { toast('Error: ' + e.message, 'er'); if (btnEl) { btnEl.disabled = false; btnEl.textContent = 'Reject'; } }
+  } catch(e) { p.status=_rsp2Prev.status;p.rejectedBy=_rsp2Prev.rejectedBy;p.rejectedAt=_rsp2Prev.rejectedAt;p.rejectionReason=_rsp2Prev.rejectionReason;toast('Error: ' + e.message, 'er'); if (btnEl) { btnEl.disabled = false; btnEl.textContent = 'Reject'; } }
 }
 
-// ── DRIVER ACCOUNTS VIEW ──────────────────────────────────────────
+// ── DRIVER ACCOUNTS VIEW
 // ── DRIVER ACCOUNTS TABS ─────────────────────────────────────────
 var _daCurrentTab = 'accounts';
 
@@ -12743,17 +12886,19 @@ async function rejectSingleRequest(id, type, btnEl) {
 async function markRequestPaid(id) {
   var r = FUEL_REQUESTS.find(function(x){ return x.id===id; });
   if (!r) return;
+  var _mpPrev={status:r.status,paidAt:r.paidAt};
   r.status='PAID'; r.paidAt=today();
   try { await callAPI('updateFuelRequest',{record:r}); toast('Marked as Paid ✓','ok'); updateBadges(); renderPendingRequests(); }
-  catch(e){ toast('Error: '+e.message,'er'); }
+  catch(e){ r.status=_mpPrev.status; r.paidAt=_mpPrev.paidAt; toast('Error: '+e.message,'er'); }
 }
 
 async function markRenewalComplete(id) {
   var r = RENEWAL_REQS.find(function(x){ return x.id===id; });
   if (!r) return;
+  var _mcPrev={status:r.status,completedAt:r.completedAt};
   r.status='COMPLETED'; r.completedAt=today();
   try { await callAPI('updateRenewalReq',{record:r}); toast('Marked Complete ✓','ok'); updateBadges(); renderPendingRequests(); }
-  catch(e){ toast('Error: '+e.message,'er'); }
+  catch(e){ r.status=_mcPrev.status; r.completedAt=_mcPrev.completedAt; toast('Error: '+e.message,'er'); }
 }
 
 // ── BULK SELECT + APPROVE/REJECT ──────────────────────────────────
@@ -13548,8 +13693,24 @@ function hasPermission(perm) {
   return !!perms[perm];
 }
 
-function isTripAdmin()   { return CURRENT_USER && String(CURRENT_USER.trip_role||'').toLowerCase()==='admin'; }
-function isTripManager() { return CURRENT_USER && ['admin','manager'].includes(String(CURRENT_USER.trip_role||'').toLowerCase()); }
+function isTripAdmin() {
+  if (!CURRENT_USER) return false;
+  var adminFields = ['trip_role','tripRole','trip_access_role','role','userRole'];
+  for (var i = 0; i < adminFields.length; i++) {
+    var val = String(CURRENT_USER[adminFields[i]]||'').toLowerCase();
+    if (val === 'admin') return true;
+  }
+  return false;
+}
+function isTripManager() {
+  if (!CURRENT_USER) return false;
+  var mgFields = ['trip_role','tripRole','role'];
+  for (var i = 0; i < mgFields.length; i++) {
+    var val = String(CURRENT_USER[mgFields[i]]||'').toLowerCase();
+    if (val === 'admin' || val === 'manager') return true;
+  }
+  return false;
+}
 function canCreate()     { return hasPermission('canCreate'); }
 function canApprove()    { return hasPermission('canApprove'); }
 function canViewAdmin()  { return hasPermission('canViewRates') || isTripAdmin(); }
@@ -14150,8 +14311,39 @@ function _deliveryStatusBadge(assignedTrips, assignedCount, targetCount){
 // Destination automatically when the release is saved.
 
 function _doBulkEditReleases(ids) {
+  // If RELEASES is empty (Firebase listener may have wiped it during a batch refresh),
+  // re-fetch from Firebase before building the edit form
+  if (!RELEASES || !RELEASES.length) {
+    fbRead('/releases').then(function(r) {
+      if (r && r.records && r.records.length) {
+        RELEASES = r.records;
+        _loaded.releases = true;
+        _doBulkEditReleases(ids); // retry
+      } else {
+        toast('Could not load release data — please refresh the page', 'er');
+      }
+    });
+    return;
+  }
+
   var releases = ids.map(function(id){ return RELEASES.find(function(r){ return r.id===id; }); }).filter(Boolean);
-  if(!releases.length) return;
+  if(!releases.length) {
+    // IDs don't match — re-fetch and retry once
+    fbRead('/releases').then(function(r) {
+      if (r && r.records) {
+        RELEASES = r.records;
+        _loaded.releases = true;
+        var retryReleases = ids.map(function(id){ return RELEASES.find(function(r){ return r.id===id; }); }).filter(Boolean);
+        if (!retryReleases.length) { toast('Release record not found — please refresh', 'er'); return; }
+        _doBulkEditReleasesRender(retryReleases);
+      }
+    });
+    return;
+  }
+  _doBulkEditReleasesRender(releases);
+}
+
+function _doBulkEditReleasesRender(releases) {
 
   var wrap = document.getElementById('rel-bulk-lines');
   if(!wrap) return;
@@ -14203,7 +14395,7 @@ function _doBulkEditReleases(ids) {
       // Row 1: Release No | Date | Customer | Destination | No of Trucks
       +'<div style="display:grid;grid-template-columns:120px 140px 1fr 1fr 100px;gap:14px;margin-bottom:14px">'
       +fg('Release No','<input type="text" id="rbe-relno-'+idx+'" value="'+esc(r.releaseNo||'')+'" style="'+fs+'" placeholder="REL-...">',true)
-      +fg('Release Date','<input type="date" id="rbe-date-'+idx+'" value="'+(r.releaseDate||'')+'" style="'+fs+';padding:0 8px">',true)
+      +fg('Release Date','<input type="date" id="rbe-date-'+idx+'" value="'+(toDateInput(r.releaseDate)||'')+'" style="'+fs+';padding:0 8px">',true)
       +fg('Customer','<select id="rbe-cust-'+idx+'" style="'+fs+'"><option value="">Select...</option>'+custOpts+'</select>',true)
       +fg('Destination','<select id="rbe-dest-'+idx+'" style="'+fs+'"><option value="">Select...</option>'+destOpts+'</select>',true)
       +fg('No. of Trucks','<input type="number" id="rbe-trucks-'+idx+'" value="'+(r.noOfTrucks||'')+'" min="1" style="'+fs+'">',true)
@@ -14883,7 +15075,11 @@ async function submitBulkRequest(andPrint) {
   // Save to API
   try{
     for(var r=0;r<requests.length;r++) await callAPI('addFuelRequest',{record:requests[r]});
-    for(var r=0;r<renewals.length;r++) await callAPI('addRenewalReq',{record:renewals[r]});
+    for(var r=0;r<renewals.length;r++){
+      var _rnR=await callAPI('addRenewalReq',{record:renewals[r]});
+      if(_rnR&&_rnR.id)renewals[r].id=_rnR.id;
+      RENEWAL_REQS.push(renewals[r]);
+    }
     toast(created+' requests created · '+skipped+' skipped (already exist) ✓','ok');
     var _submittedTripIds = selectedTrips.map(function(t){ return t.id; });
     updateBadges(); renderBudget();
@@ -16024,18 +16220,25 @@ var PNL_ROLE_PRESETS = {viewer:false, staff:false, manager:true, admin:true};
 // ── PERMISSION CHECKERS ────────────────────────────────────────────
 function canModule(mod, action) {
   if (!CURRENT_USER) return false;
+  // Admin and manager always get full access — check FIRST before any other gate
   if (isTripAdmin()) return true;
+  if (isTripManager()) return true;
+  // DEBUG: log what's happening so we can trace the block
+  if (action === 'edit') {
+    console.log('[canModule] mod='+mod+' action='+action+
+      ' trip_role='+CURRENT_USER.trip_role+
+      ' role='+CURRENT_USER.role+
+      ' trip_access='+CURRENT_USER.trip_access+
+      ' p_'+mod+'_edit='+CURRENT_USER['p_'+mod+'_edit']);
+  }
+  // trip_access field gates non-admin users out of the entire trips system
   var tripAccess = CURRENT_USER.trip_access===true||CURRENT_USER.trip_access==='true'||CURRENT_USER.trip_access==='TRUE';
   if (CURRENT_USER.trip_access!==undefined && CURRENT_USER.trip_access!=='' && !tripAccess) return false;
+  // Granular permission field
   var key = action ? ('p_'+mod+'_'+action) : ('p_'+mod);
   var val = CURRENT_USER[key];
   if (val===true||String(val).toLowerCase()==='true') return true;
   if (val===false||String(val).toLowerCase()==='false') return false;
-  // Field was never explicitly set — default to false for every action
-  // except bare module access, which defaults true so a legacy account
-  // (saved before this granular system existed) isn't locked out of a
-  // module entirely. No silent inheritance from the Trip Role preset —
-  // only explicitly-checked boxes ever grant a permission.
   return !action;
 }
 

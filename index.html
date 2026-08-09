@@ -4066,8 +4066,9 @@ async function submitAllReleases(){
     } else {
       toast((records.length-errors) + ' submitted, ' + errors + ' failed', 'er');
     }
-    updateBadges(); renderReleases();
-    switchView('releases');
+    updateBadges();
+    await switchView('releases');
+    renderReleases();
   } finally {
     if (btn) { btn.disabled = false; btn.innerHTML = '&#128190; Submit All Releases'; }
   }

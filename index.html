@@ -62,13 +62,56 @@
 
   document.addEventListener('DOMContentLoaded', _fbInit);
 
+  // ── FIREBASE READ TRACKER (Phase 1 diagnostics) ──────────────────
+  // Tracks reads centrally since every Firebase read goes through fbRead.
+  // Usage in browser console:
+  //   showFbStats()   → print summary table sorted by MB
+  //   resetFbStats()  → clear counters and start fresh
+  // Note: Workshop has its own separate tracker. These are Trips-only stats.
+  var _fbStats = {};
+
+  function _trackRead(label, val, records) {
+    try {
+      var str = JSON.stringify(val || null);
+      var bytes = str ? str.length * 2 : 0;
+      var isFull = records > 1;
+      if (!_fbStats[label]) _fbStats[label] = { reads:0, fullReads:0, singleReads:0, bytes:0 };
+      _fbStats[label].reads++;
+      _fbStats[label].bytes += bytes;
+      if (isFull) _fbStats[label].fullReads++;
+      else _fbStats[label].singleReads++;
+    } catch(e) { /* tracker must never break the app */ }
+  }
+
+  window.showFbStats = function() {
+    var rows = Object.keys(_fbStats).map(function(p) {
+      var s = _fbStats[p];
+      return { Path: p, Reads: s.reads, 'Full reads': s.fullReads,
+               'Single reads': s.singleReads, MB: (s.bytes/1024/1024).toFixed(3) };
+    }).sort(function(a,b){ return parseFloat(b.MB)-parseFloat(a.MB); });
+    var totalMB = rows.reduce(function(t,r){ return t+parseFloat(r.MB); }, 0);
+    console.group('📊 Firebase Read Stats (Trips) — ' + new Date().toLocaleTimeString());
+    console.table(rows);
+    console.log('TOTAL: ' + rows.reduce(function(t,r){return t+r.Reads;},0) +
+                ' reads, ' + totalMB.toFixed(2) + ' MB');
+    console.groupEnd();
+    return rows;
+  };
+
+  window.resetFbStats = function() {
+    _fbStats = {};
+    console.log('✅ Firebase stats reset at ' + new Date().toLocaleTimeString());
+  };
+
   function fbRead(path) {
     return _fbInit().then(function() {
       if (!_fbDb) return { records: [] };
       return _fbDb.ref('/ak_trips' + path).once('value').then(function(snap) {
         var val = snap.val();
+        var records = val ? Object.values(val) : [];
+        _trackRead('trips:' + path, val, records.length);
         if (!val) return { records: [] };
-        return { records: Object.values(val) };
+        return { records: records };
       });
     });
   }
@@ -4358,8 +4401,15 @@ function renderTrips(){
     if(sfilt && (t.status||'').toUpperCase() !== sfilt.toUpperCase()) return false;
     for(var i=0;i<filters.length;i++){
       var fi=filters[i];
-      if(fi.field && fi.value && !TRIP_DATE_FIELDS.includes(fi.field)){
-        if(!(t[fi.field]||'').toString().toLowerCase().includes(fi.value)) return false;
+      if(fi.field && fi.value){
+        if(TRIP_DATE_FIELDS.includes(fi.field)){
+          // Date field: compare normalized YYYY-MM-DD so typing '2026-07' finds '21/07/2026'
+          var _tdn=toYMD(String(t[fi.field]||''));
+          var _trv=String(t[fi.field]||'').toLowerCase();
+          if(_tdn.indexOf(fi.value)<0&&_trv.indexOf(fi.value)<0) return false;
+        } else {
+          if(!(t[fi.field]||'').toString().toLowerCase().includes(fi.value)) return false;
+        }
       }
     }
     if(activeDateField && (dateFrom||dateTo)){
@@ -4703,12 +4753,15 @@ function applyTripFilters(trips, prefix) {
   return trips.filter(function(t){
     for(var i=0;i<filters.length;i++){
       var fi=filters[i];
-      if(fi.field && fi.value && !TRIP_DATE_FIELDS.includes(fi.field)){
-        if(!(t[fi.field]||'').toString().toLowerCase().includes(fi.value)) return false;
+      if(fi.field && fi.value){
+        if(TRIP_DATE_FIELDS.includes(fi.field)){
+          var _adn=toYMD(String(t[fi.field]||''));
+          var _arv=String(t[fi.field]||'').toLowerCase();
+          if(_adn.indexOf(fi.value)<0&&_arv.indexOf(fi.value)<0) return false;
+        } else {
+          if(!(t[fi.field]||'').toString().toLowerCase().includes(fi.value)) return false;
+        }
       }
-    }
-    if(activeDateField && (dateFrom||dateTo)){
-      var d=toYMD(t[activeDateField]||'');
       if(dateFrom && d < dateFrom) return false;
       if(dateTo   && d > dateTo)   return false;
     }
@@ -6735,8 +6788,14 @@ function renderDeductions() {
   var data = DEDUCTIONS.filter(function(d){
     for(var i=0;i<filters.length;i++){
       var fi=filters[i];
-      if(!fi.field || !fi.value || fi.field==='date') continue;
-      if(!(d[fi.field]||'').toString().toLowerCase().includes(fi.value)) return false;
+      if(!fi.field || !fi.value) continue;
+      if(fi.field==='date'){
+        var _ddn=toYMD(String(d[fi.field]||''));
+        var _drv=String(d[fi.field]||'').toLowerCase();
+        if(_ddn.indexOf(fi.value)<0&&_drv.indexOf(fi.value)<0) return false;
+      } else {
+        if(!(d[fi.field]||'').toString().toLowerCase().includes(fi.value)) return false;
+      }
     }
     if(hasDate && (dateFrom||dateTo)){
       var dy = toYMD(d.date||'');
@@ -10351,8 +10410,13 @@ function renderDriverAccounts() {
     if (f1field && f1value && f1field !== 'date') {
       if (!(r[f1field]||'').toString().toLowerCase().includes(f1value)) return false;
     }
-    if (f2field && f2value && f2field !== 'date') {
-      if (!(r[f2field]||'').toString().toLowerCase().includes(f2value)) return false;
+    if (f2field && f2value) {
+      if (f2field === 'date') {
+        var _dadn=toYMD(String(r[f2field]||''));
+        if(_dadn.indexOf(f2value)<0&&(r[f2field]||'').toString().toLowerCase().indexOf(f2value)<0) return false;
+      } else {
+        if (!(r[f2field]||'').toString().toLowerCase().includes(f2value)) return false;
+      }
     }
     if (hasDate && (dateFrom||dateTo)) {
       var d = toYMD(r.date||'');

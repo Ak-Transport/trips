@@ -4257,7 +4257,7 @@ function calcLoss(){
   var _relId=(document.getElementById('trp-release')||{}).value||'';
   var _rel=RELEASES.find(function(r){return r.id===_relId;});
   var _rate=getAllowableRate(_rel?_rel.product:'');
-  var allowable=loaded*_rate,actual=Math.max(0,loaded-offloaded),excess=Math.max(0,actual-allowable);
+  var allowable=loaded*_rate,actual=Math.max(0,loaded-offloaded),excess=offloaded>=loaded?0:Math.max(0,actual-allowable);
   document.getElementById('trp-allowable-loss').value=allowable.toFixed(0)+' ltrs';
   document.getElementById('trp-actual-loss').value=actual.toFixed(0)+' ltrs';
   var exEl=document.getElementById('trp-excess-loss');
@@ -4275,7 +4275,7 @@ async function saveTrip(addAnother){
     var lQty=parseFloat(document.getElementById('trp-loaded-qty').value)||0;
     var oQty=parseFloat(document.getElementById('trp-offloaded-qty').value)||0;
     var _tripRate=getAllowableRate(rel?rel.product:'');
-    var allow=lQty*_tripRate,actual=Math.max(0,lQty-oQty),excess=Math.max(0,actual-allow);
+    var allow=lQty*_tripRate,actual=Math.max(0,lQty-oQty),excess=oQty>=lQty?0:Math.max(0,actual-allow);
     var record={id:editingId||uuid(),tripNo:document.getElementById('trp-no').value,releaseId:releaseId,releaseNo:rel?rel.releaseNo:'',releaseDate:rel?rel.releaseDate:'',loadingDate:loadDate,offloadingDate:document.getElementById('trp-offloading-date').value,horse:horse,trailer:trailer,driver:driver,customer:rel?rel.customer:'',loadingPoint:rel?rel.loadingPoint:'',destination:rel?rel.destination:'',border:rel?rel.border:'',border2:rel?(rel.border2||''):'',product:rel?rel.product:'',akInvoiceNo:document.getElementById('trp-invoice-no').value.toUpperCase(),tradeRef:document.getElementById('trp-traderef').value.toUpperCase(),subTransporter:document.getElementById('trp-subtransporter').value.toUpperCase(),loadedQty:lQty,offloadedQty:oQty,allowableLoss:allow.toFixed(2),actualLoss:actual.toFixed(2),excessLoss:excess.toFixed(2),ratePerLitre:parseFloat(document.getElementById('trp-rate-ltr').value)||0,notes:document.getElementById('trp-notes').value,status:'IN TRANSIT'};
     if(editingId){await callAPI('updateTrip',{record:record});var idx=TRIPS.findIndex(function(t){return t.id===editingId;});if(idx>=0)TRIPS[idx]=record;toast('Trip updated ✓','ok');addAnother=false;}
     else{var _tripRes=await callAPI('addTrip',{record:record});if(_tripRes&&_tripRes.id)record.id=_tripRes.id;if(_tripRes&&_tripRes.tripNo)record.tripNo=_tripRes.tripNo;TRIPS.push(record);toast('Trip '+esc(record.tripNo)+' created ✓ ('+esc(horse)+')','ok');}
@@ -4632,7 +4632,7 @@ function calcBetLine(n) {
   var offloaded=parseFloat((document.getElementById('bet-offloaded-'+n)||{}).value)||0;
   if(!loaded)return;
   var _betProd=(document.getElementById('bet-product-'+n)||{}).value||'';
-  var allow=loaded*getAllowableRate(_betProd),actual=Math.max(0,loaded-offloaded),excess=Math.max(0,actual-allow);
+  var allow=loaded*getAllowableRate(_betProd),actual=Math.max(0,loaded-offloaded),excess=offloaded>=loaded?0:Math.max(0,actual-allow);
   var setV=function(id,val){var el=document.getElementById(id);if(el)el.value=val.toFixed(2);};
   setV('bet-allowloss-'+n,allow);setV('bet-actualloss-'+n,actual);setV('bet-excessloss-'+n,excess);
 }
@@ -4696,7 +4696,7 @@ async function saveBulkEditTrips() {
     }
     var loaded=parseFloat((document.getElementById('bet-loaded-'+n)||{}).value)||0;
     var offloaded=parseFloat((document.getElementById('bet-offloaded-'+n)||{}).value)||0;
-    var allow=loaded*getAllowableRate(t.product||''),actual=Math.max(0,loaded-offloaded),excess=Math.max(0,actual-allow);
+    var allow=loaded*getAllowableRate(t.product||''),actual=Math.max(0,loaded-offloaded),excess=offloaded>=loaded?0:Math.max(0,actual-allow);
     t.horse=horse;t.trailer=trailer;t.driver=driver;
     t.subTransporter=((document.getElementById('bet-sub-'+n)||{}).value||'').toUpperCase();
     t.loadingDate=loadDate;
@@ -9898,7 +9898,8 @@ function calcFuelLossFields() {
   var allowable = loaded * getAllowableRate(_flTrip?_flTrip.product:'');
   var actual    = Math.max(0, loaded - offloaded);
   var excess    = Math.max(0, actual - allowable);
-  var driverOwes = excess * rate;
+  // If driver delivered equal or more than loaded → no loss → driver owes nothing
+  var driverOwes = (offloaded >= loaded) ? 0 : excess * rate;
   document.getElementById('fl-allowable').value = allowable.toFixed(0) + ' ltrs';
   document.getElementById('fl-actual').value    = actual.toFixed(0) + ' ltrs';
   var exEl = document.getElementById('fl-excess');
@@ -9926,7 +9927,8 @@ async function saveFuelLoss() {
   var allowable = loaded * getAllowableRate(_flTrip?_flTrip.product:'');
   var actual    = Math.max(0, loaded - offloaded);
   var excess    = Math.max(0, actual - allowable);
-  var driverOwes= excess * rate;
+  // If driver delivered equal or more than loaded → driver owes nothing
+  var driverOwes= (offloaded >= loaded) ? 0 : excess * rate;
   var clientUSD = parseFloat(document.getElementById('fl-clientusd').value) || 0;
   var t = TRIPS.find(function(x){ return x.id === tripId; });
   var btn = document.getElementById('fl-save-btn'); btn.disabled = true; btn.textContent = 'Saving...';

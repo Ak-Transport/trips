@@ -8715,11 +8715,25 @@ async function autoCreateShortageRecord(t) {
   var excess = parseFloat(t.excessLoss||0);
   if (excess <= 0) return; // no shortage to record
 
+  // Fetch latest FUEL_LOSS from Firebase before checking for duplicates
+  // This prevents race condition where FUEL_LOSS array is stale and
+  // a duplicate check passes even though a record was already created
+  try {
+    var latest = await fbRead('/fuelLoss');
+    if (latest && latest.records && latest.records.length > 0) {
+      FUEL_LOSS = latest.records;
+      _loaded.fuelRequests = true;
+    }
+  } catch(e) { /* use existing FUEL_LOSS if fetch fails */ }
+
   // Check if a shortage record already exists for this trip
   var exists = FUEL_LOSS.some(function(f){
     return f.tripId===t.id || f.tripNo===t.tripNo;
   });
-  if (exists) return; // already recorded
+  if (exists) {
+    console.log('autoCreateShortageRecord: duplicate prevented for', t.tripNo);
+    return;
+  }
 
   // Look up customer from release
   var rel = RELEASES.find(function(r){ return r.releaseNo===t.releaseNo; });

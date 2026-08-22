@@ -8713,35 +8713,66 @@ async function approveRequest(id) {
 async function autoCreateShortageRecord(t) {
   if (!t || (t.status||'').toUpperCase() !== 'COMPLETED') return;
   var excess = parseFloat(t.excessLoss||0);
-  if (excess <= 0) return; // no shortage to record
 
   // Fetch latest FUEL_LOSS from Firebase before checking for duplicates
-  // This prevents race condition where FUEL_LOSS array is stale and
-  // a duplicate check passes even though a record was already created
   try {
     var latest = await fbRead('/fuelLoss');
     if (latest && latest.records && latest.records.length > 0) {
       FUEL_LOSS = latest.records;
-      _loaded.fuelRequests = true;
     }
   } catch(e) { /* use existing FUEL_LOSS if fetch fails */ }
 
   // Check if a shortage record already exists for this trip
-  var exists = FUEL_LOSS.some(function(f){
+  var existing = FUEL_LOSS.find(function(f){
     return f.tripId===t.id || f.tripNo===t.tripNo;
   });
-  if (exists) {
-    console.log('autoCreateShortageRecord: duplicate prevented for', t.tripNo);
+
+  if (existing) {
+    // Trip quantities were edited — UPDATE existing shortage record
+    // instead of creating a duplicate
+    if (excess <= 0) {
+      // Excess is now zero — mark existing record as resolved
+      existing.excessLoss   = '0';
+      existing.driverOwsTZS = '0';
+      existing.balanceTZS   = '0';
+      existing.status       = 'PAID';
+      existing.notes        = (existing.notes||'') + ' | Corrected: no excess after edit';
+      try {
+        await callAPI('updateFuelLoss', {record: existing});
+        toast('Shortage record updated — no excess loss after correction ✓', 'ok');
+      } catch(e) { console.error('Update fuel loss failed:', e.message); }
+    } else if (String(existing.excessLoss) !== String(excess.toFixed(2))) {
+      // Excess amount changed — update the record
+      var pricePerLtr = parseFloat(SETTINGS.fuelPrice||3200);
+      var newOwes = Math.round(excess * pricePerLtr);
+      var paid = parseFloat(existing.totalPaidTZS||0);
+      existing.excessLoss   = excess.toFixed(2);
+      existing.driverOwsTZS = String(newOwes);
+      existing.balanceTZS   = String(Math.max(0, newOwes - paid));
+      existing.loadedQty    = parseFloat(t.loadedQty||0);
+      existing.offloadedQty = parseFloat(t.offloadedQty||0);
+      existing.notes        = (existing.notes||'') + ' | Updated after trip edit on ' + today();
+      try {
+        await callAPI('updateFuelLoss', {record: existing});
+        var fidx = FUEL_LOSS.findIndex(function(f){ return f.id===existing.id; });
+        if (fidx >= 0) FUEL_LOSS[fidx] = existing;
+        toast('Shortage record updated — excess corrected to ' + fmt(excess) + ' ltrs ✓', 'ok');
+      } catch(e) { console.error('Update fuel loss failed:', e.message); }
+    }
+    // else: same amount — nothing to update
     return;
   }
+
+  // No existing record — create new one (only if there is actual excess)
+  if (excess <= 0) return;
 
   // Look up customer from release
   var rel = RELEASES.find(function(r){ return r.releaseNo===t.releaseNo; });
   var customer = rel ? (rel.customer||'—') : (t.customer||'—');
 
-  // Calculate driver owes (use price per litre from settings)
-  var pricePerLtr = parseFloat(SETTINGS.fuelPrice||3200);
-  var driverOwsTZS = Math.round(excess * pricePerLtr);
+  // Calculate driver owes
+  var pricePerLtr2 = parseFloat(SETTINGS.fuelPrice||3200);
+  var driverOwsTZS = Math.round(excess * pricePerLtr2);
 
   var rec = {
     id: uuid(),

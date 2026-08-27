@@ -1121,7 +1121,7 @@ td,td *{font-size:13px!important;font-family:'Inter',sans-serif!important}
       <div id="toolbar">
         <div><div class="vtitle">&#128737; Permits &amp; Docs</div><div class="viewsub" id="permits-sub">Loading...</div></div>
         <div class="tb-divider"></div>
-        <button class="btn bp" onclick="openAddPermit()">+ Record Permit</button>
+        <button class="btn bp" onclick="openAddPermit()" id="btn-record-permit">+ Record Permit</button>
       </div>
       <!-- Tabs -->
       <div style="padding:0 22px;flex-shrink:0;border-bottom:2px solid #e2e2e7;display:flex;gap:0">
@@ -16564,10 +16564,10 @@ var TRIP_MODULES_META = [
   {key:'trip',       label:'Trips',               icon:'🚛', perms:['create','edit','delete','approve']},
   {key:'shortage',   label:'Shortage Register',   icon:'⚠️', perms:['payment','approve']},
   {key:'deduction',  label:'Deduction Register',  icon:'📋', perms:['create','edit','delete','payment','approve']},
-  {key:'permit',     label:'Permits',             icon:'🛡️', perms:['create','edit','delete','approve']},
+  {key:'permit',     label:'Permits',             icon:'🛡️', perms:['create','edit','delete','approve','record']},
   {key:'expense',    label:'Additional Expenses', icon:'📝', perms:['create','edit','delete','approve']}
 ];
-var PERM_LABELS = {create:'Create', edit:'Edit', delete:'Delete', approve:'Approve', payment:'Payment'};
+var PERM_LABELS = {create:'Create', edit:'Edit', delete:'Delete', approve:'Approve', payment:'Payment', record:'Record Permit'};
 var PNL_TABS_META = [
   {key:'trips',        label:'Trip Summary'},
   {key:'tplsummary',   label:'Trip P&L Summary'},
@@ -16835,13 +16835,21 @@ function _p15GateCreate(mod, fnName) {
     return orig.apply(this, arguments);
   };
 }
+function _p15GateRecord(mod, fnName) {
+  var orig = window[fnName];
+  if (typeof orig !== 'function') return;
+  window[fnName] = function() {
+    if (!canModule(mod, 'record')) { toast('You do not have permission to record permits. Contact your administrator.','er'); return; }
+    return orig.apply(this, arguments);
+  };
+}
 _p15GateCreate('release', 'openAddReleasesView');
 _p15GateCreate('trip',    'openAddTrip');
 _p15GateCreate('deduction','openAddDeduction');
-_p15GateCreate('permit',  'openAddPermit');
-_p15GateCreate('permit',  'openAddPermitForVehicle');
-_p15GateCreate('permit',  'openAddPermitForSlot');
-_p15GateCreate('permit',  'quickRenewPermit');
+_p15GateRecord('permit', 'openAddPermit');
+_p15GateRecord('permit', 'openAddPermitForVehicle');
+_p15GateRecord('permit', 'openAddPermitForSlot');
+_p15GateCreate('permit', 'quickRenewPermit');
 _p15GateCreate('expense', 'openAddExpenseReq');
 _p15GateCreate('trip',    'openBulkRequest');
 
@@ -16934,11 +16942,11 @@ function applyModuleButtonVisibility() {
   toggle('[onclick*="approveDedPayment("]', canModule('deduction','approve'));
   toggle('[onclick*="rejectDedPayment("]',  canModule('deduction','approve'));
   // Permit
-  toggle('[onclick*="openAddPermit()"]',        canModule('permit','create'));
+  toggle('[onclick*="openAddPermit()"]',        canModule('permit','record'));
   toggle('[onclick*="editPermitRecord("]',     canModule('permit','edit'));
   toggle('[onclick*="quickRenewPermit("]',     canModule('permit','create'));
-  toggle('[onclick*="openAddPermitForSlot("]', canModule('permit','create'));
-  toggle('[onclick*="openAddPermitForVehicle("]', canModule('permit','create'));
+  toggle('[onclick*="openAddPermitForSlot("]', canModule('permit','record'));
+  toggle('[onclick*="openAddPermitForVehicle("]', canModule('permit','record'));
   // Expense
   toggle('[onclick*="openAddExpenseReq()"]', canModule('expense','create'));
   // Shortage (no create/delete surface exists — only the payment/approve = edit action)

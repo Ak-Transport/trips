@@ -5949,7 +5949,7 @@ async function autoCreateShortageRecord(t) {
       existing.excessLoss="0";existing.driverOwsTZS="0";existing.balanceTZS="0";existing.status="PAID";
       try { await callAPI("updateFuelLoss",{record:existing}); } catch(e) {}
     } else if (String(existing.excessLoss)!==String(excess.toFixed(2))) {
-      var p=parseFloat(SETTINGS.fuelPrice||3200),newOwes=Math.round(excess*p),paid=parseFloat(existing.totalPaidTZS||0);
+      var p=parseFloat(t.ratePerLitre||SETTINGS.fuelLossRate||SETTINGS.fuelPrice||3200),newOwes=Math.round(excess*p),paid=parseFloat(existing.totalPaidTZS||0);
       existing.excessLoss=excess.toFixed(2);existing.driverOwsTZS=String(newOwes);existing.balanceTZS=String(Math.max(0,newOwes-paid));
       existing.notes=(existing.notes||"")+" | Updated "+today();
       try { await callAPI("updateFuelLoss",{record:existing}); var fi=FUEL_LOSS.findIndex(function(f){return f.id===existing.id;}); if(fi>=0)FUEL_LOSS[fi]=existing; } catch(e) {}
@@ -5959,7 +5959,7 @@ async function autoCreateShortageRecord(t) {
   if (excess <= 0) return;
   var rel=RELEASES.find(function(r){return r.releaseNo===t.releaseNo;});
   var customer=rel?(rel.customer||"—"):(t.customer||"—");
-  var price=parseFloat(SETTINGS.fuelPrice||3200),owes=Math.round(excess*price);
+  var price=parseFloat(t.ratePerLitre||SETTINGS.fuelLossRate||SETTINGS.fuelPrice||3200),owes=Math.round(excess*price);
   var rec={id:uuid(),tripId:t.id,tripNo:t.tripNo,driver:t.driver||"",horse:t.horse||"",customer:customer,
     destination:t.destination||"",loadedQty:parseFloat(t.loadedQty||0),offloadedQty:parseFloat(t.offloadedQty||0),
     excessLoss:excess,clientChargeUSD:0,driverOwsTZS:owes,totalPaidTZS:0,balanceTZS:owes,
@@ -6108,7 +6108,7 @@ window.renderShortage = function() {
   }).map(function(t){
     var rel = RELEASES.find(function(r){ return r.releaseNo===t.releaseNo; });
     var customer = rel ? (rel.customer||'—') : (t.customer||'—');
-    var pricePerLtr = parseFloat(SETTINGS.fuelPrice||3200);
+    var pricePerLtr = parseFloat(t.ratePerLitre||SETTINGS.fuelLossRate||SETTINGS.fuelPrice||3200);
     var excess = parseFloat(t.excessLoss||0);
     var driverOwsTZS = Math.round(excess * pricePerLtr);
     return {
@@ -6293,7 +6293,7 @@ function renderDriverSummary() {
       ? DRIVER_OPENING_BALANCES.find(function(o){return o.driver===driver;}) : null;
     var openingBal = openingBalRec ? parseFloat(openingBalRec.openingBalanceTZS||0) : 0;
     var shortOwed=shortRecs.reduce(function(s,f){return s+parseFloat(f.driverOwsTZS||0);},0)
-                 +autoRecs.reduce(function(s,t){return s+Math.round(parseFloat(t.excessLoss||0)*parseFloat(SETTINGS.fuelPrice||3200));},0)
+                 +autoRecs.reduce(function(s,t){return s+Math.round(parseFloat(t.excessLoss||0)*parseFloat(t.ratePerLitre||SETTINGS.fuelLossRate||SETTINGS.fuelPrice||3200));},0)
                  +openingBal;
     var shortPaid=SHORTAGE_PMTS.filter(function(p){
       return shortRecs.some(function(f){return f.id===p.fuelLossId;})&&(p.status||'').toUpperCase()==='APPROVED';
@@ -6451,7 +6451,7 @@ function openDriverStatement(driver) {
   var dedRecs=typeof DEDUCTIONS!=='undefined'?DEDUCTIONS.filter(function(d){return d.driver===driver;}):[]; 
   var dedRows=[];
   shortRecs.forEach(function(f){ dedRows.push({date:f.createdAt||'',ref:f.tripNo||'--',type:'Fuel Shortage',desc:'Excess: '+fmt(f.excessLoss||0)+' ltrs',amount:parseFloat(f.driverOwsTZS||0)}); });
-  autoRecs.forEach(function(t){ var o=Math.round(parseFloat(t.excessLoss||0)*parseFloat(SETTINGS.fuelPrice||3200)); dedRows.push({date:t.offloadingDate||t.loadingDate||'',ref:t.tripNo||'--',type:'Fuel Shortage',desc:'Excess: '+fmt(t.excessLoss||0)+' ltrs (pending)',amount:o}); });
+  autoRecs.forEach(function(t){ var o=Math.round(parseFloat(t.excessLoss||0)*parseFloat(t.ratePerLitre||SETTINGS.fuelLossRate||SETTINGS.fuelPrice||3200)); dedRows.push({date:t.offloadingDate||t.loadingDate||'',ref:t.tripNo||'--',type:'Fuel Shortage',desc:'Excess: '+fmt(t.excessLoss||0)+' ltrs (pending)',amount:o}); });
   dedRecs.forEach(function(d){ dedRows.push({date:d.date||'',ref:d.refNo||'--',type:d.type||'Other',desc:d.description||'--',amount:parseFloat(d.amountTZS||0)}); });
   if(typeof DRIVER_OPENING_BALANCES!=='undefined'){
     var obRec=DRIVER_OPENING_BALANCES.find(function(o){return o.driver===driver;});
@@ -8222,7 +8222,8 @@ async function _quickRenewPermitConfirmed(vehicle, type, vType, existingPermit) 
       estimatedCost: existingPermit ? parseFloat(existingPermit.amountPaid||0) : 0,
       status: 'PENDING',
       requestedBy: CURRENT_USER ? (CURRENT_USER.name||CURRENT_USER.username) : 'STAFF',
-      notes: 'Renewal requested from Vehicle Permits page'
+      category: _currentPermitTab === 'trip' ? 'trip' : 'vehicle',
+      notes: 'Renewal requested from ' + (_currentPermitTab === 'trip' ? 'Trip' : 'Vehicle') + ' Permits page'
     };
     var _rnRes=await callAPI('addRenewalReq', {record: record});if(_rnRes&&_rnRes.id)record.id=_rnRes.id;RENEWAL_REQS.push(record);
 
@@ -9839,7 +9840,7 @@ window.renderShortage = function() {
   }).map(function(t){
     var rel = RELEASES.find(function(r){ return r.releaseNo===t.releaseNo; });
     var customer = rel ? (rel.customer||'—') : (t.customer||'—');
-    var pricePerLtr = parseFloat(SETTINGS.fuelPrice||3200);
+    var pricePerLtr = parseFloat(t.ratePerLitre||SETTINGS.fuelLossRate||SETTINGS.fuelPrice||3200);
     var excess = parseFloat(t.excessLoss||0);
     var driverOwsTZS = Math.round(excess * pricePerLtr);
     return {
@@ -9976,14 +9977,16 @@ function onFuelLossTripChange() {
   document.getElementById('fl-driver').value   = t.driver || '';
   document.getElementById('fl-loaded').value   = t.loadedQty || '';
   document.getElementById('fl-offloaded').value= t.offloadedQty || '';
-  document.getElementById('fl-rate').value     = 'TZS ' + fmt(SETTINGS.fuelLossRate || 3200) + '/ltr';
+  var _flTripForRate = TRIPS.find(function(x){ return x.id === document.getElementById('fl-trip').value; });
+  var _effectiveRate = parseFloat((_flTripForRate&&_flTripForRate.ratePerLitre)||SETTINGS.fuelLossRate||SETTINGS.fuelPrice||3200);
+  document.getElementById('fl-rate').value     = 'TZS ' + fmt(_effectiveRate) + '/ltr';
   calcFuelLossFields();
 }
 
 function calcFuelLossFields() {
   var loaded    = parseFloat(document.getElementById('fl-loaded').value)    || 0;
   var offloaded = parseFloat(document.getElementById('fl-offloaded').value) || 0;
-  var rate      = parseFloat(SETTINGS.fuelLossRate || 3200);
+  var rate      = parseFloat((_flTrip&&_flTrip.ratePerLitre)||SETTINGS.fuelLossRate||SETTINGS.fuelPrice||3200);
   if (!loaded) return;
   var _flTrip = TRIPS.find(function(x){ return x.id === document.getElementById('fl-trip').value; });
   var allowable = loaded * getAllowableRate(_flTrip?_flTrip.product:'');
@@ -10014,7 +10017,7 @@ async function saveFuelLoss() {
   if (!tripId) { toast('Select a trip', 'er'); return; }
   var loaded    = parseFloat(document.getElementById('fl-loaded').value)    || 0;
   var offloaded = parseFloat(document.getElementById('fl-offloaded').value) || 0;
-  var rate      = parseFloat(SETTINGS.fuelLossRate || 3200);
+  var rate      = parseFloat((_flTrip&&_flTrip.ratePerLitre)||SETTINGS.fuelLossRate||SETTINGS.fuelPrice||3200);
   var allowable = loaded * getAllowableRate(_flTrip?_flTrip.product:'');
   var actual    = Math.max(0, loaded - offloaded);
   var excess    = Math.max(0, actual - allowable);
@@ -10489,7 +10492,7 @@ function renderDriverAccounts() {
         && !FUEL_LOSS.some(function(f){ return f.tripId===t.id || f.tripNo===t.tripNo; });
   }).forEach(function(t) {
     var excess = parseFloat(t.excessLoss||0);
-    var owed   = Math.round(excess * parseFloat(SETTINGS.fuelPrice||3200));
+    var owed   = Math.round(excess * parseFloat(trip.ratePerLitre||SETTINGS.fuelLossRate||SETTINGS.fuelPrice||3200));
     rows.push({ id:'auto-'+t.id, source:'auto', driver:t.driver||'--', refNo:t.tripNo||'--',
       date:t.offloadingDate||t.loadingDate||'', type:'Fuel Shortage',
       description:'Excess: '+fmt(excess)+' ltrs (pending save)',
@@ -13454,6 +13457,16 @@ function renderRfTab() {
     var vrfDateTo   = (document.getElementById('VRF_DATE_TO')||{}).value||'';
     var hasDateFilter = ['VRF1','VRF2','VRF3'].some(function(id){ return (document.getElementById(id)||{}).value==='requestDate'; });
     data = RENEWAL_REQS.filter(function(r){
+      // Only show vehicle permit renewals — exclude trip permit renewals
+      // Records with category='trip' belong to trip permit section
+      // Records with no category (old records) — determine by permit type
+      var cat = r.category || '';
+      if (cat === 'trip') return false;
+      if (!cat) {
+        // Old records without category — classify by permit type
+        var tripPermitTypes = ['COMESA Horse','COMESA Trailer','Permit Horse','Permit Trailer','Carbon Tax','ZABS','Transit Permit'];
+        if (tripPermitTypes.some(function(t){ return (r.permitType||'').toLowerCase().includes(t.toLowerCase()); })) return false;
+      }
       if (sfilt && (r.status||'').toUpperCase() !== sfilt.toUpperCase()) return false;
       for(var i=0;i<filters.length;i++){
         var fi=filters[i];
@@ -13470,6 +13483,51 @@ function renderRfTab() {
       }
       return true;
     }).sort(function(a,b){ return new Date(b.requestDate||0)-new Date(a.requestDate||0); });
+  } else if (_rfCurrentTab === 'permit') {
+    var tripPermitTypes = ['COMESA Horse','COMESA Trailer','Permit Horse','Permit Trailer','Carbon Tax','ZABS','Transit Permit'];
+
+    // Helper: check if a field filter matches a permit request record
+    function _permitFieldMatch(r, fi) {
+      if (!fi.field || !fi.value) return true;
+      var val = '';
+      if (fi.field === 'customer') {
+        var _t = TRIPS.find(function(x){ return x.id===r.tripId||x.tripNo===r.tripNo; });
+        var _rel = RELEASES.find(function(x){ return x.releaseNo===(r.releaseNo||(_t?_t.releaseNo:'')); });
+        val = _rel?_rel.customer||'':_t?_t.customer||'':'';
+      } else if (fi.field === 'driver') {
+        var _t2 = TRIPS.find(function(x){ return x.id===r.tripId||x.tripNo===r.tripNo; });
+        val = _t2?_t2.driver||'':'';
+      } else if (fi.field === 'horse') {
+        val = r.horse||r.vehicle||'';
+      } else {
+        val = (r[fi.field]||'').toString();
+      }
+      return val.toLowerCase().includes(fi.value);
+    }
+
+    var tripRenewals = RENEWAL_REQS.filter(function(r){
+      var cat = r.category || '';
+      if (cat === 'vehicle') return false;
+      if (cat !== 'trip' && !tripPermitTypes.some(function(t){ return (r.permitType||'').toLowerCase().includes(t.toLowerCase()); })) return false;
+      if (sfilt && (r.status||'').toUpperCase() !== sfilt.toUpperCase()) return false;
+      for(var i=0;i<filters.length;i++){
+        if (!_permitFieldMatch(r, filters[i])) return false;
+      }
+      return true;
+    });
+
+    var fuelPermits = FUEL_REQUESTS.filter(function(r){
+      if (r.requestType !== 'PERMIT') return false;
+      if (sfilt && (r.status||'').toUpperCase() !== sfilt.toUpperCase()) return false;
+      for(var i=0;i<filters.length;i++){
+        if (!_permitFieldMatch(r, filters[i])) return false;
+      }
+      return true;
+    });
+
+    data = fuelPermits.concat(tripRenewals).sort(function(a,b){
+      return new Date(b.requestedAt||b.requestDate||0)-new Date(a.requestedAt||a.requestDate||0);
+    });
   } else {
     data = FUEL_REQUESTS.filter(function(r){
       if (r.requestType !== tabDef.type) return false;
@@ -13519,10 +13577,55 @@ function renderRfTab() {
       }).join('')
     + '</tr></thead><tbody>'
     + data.map(function(r){
-        var t    = null;
-        if (_rfCurrentTab !== 'vehpermit' && _rfCurrentTab !== 'addexp') {
+        var t = null;
+        var isRenewal = r.reqNo && r.reqNo.startsWith('PRQ-');
+        if (_rfCurrentTab === 'permit' && !isRenewal) {
+          // FUEL_REQUEST permit — find trip via tripId/tripNo
           if (r.tripId) t = TRIPS.find(function(x){ return x.id===r.tripId; });
           if (!t && r.tripNo) t = TRIPS.find(function(x){ return x.tripNo===r.tripNo; });
+        }
+        // For renewal records in trip permit tab — build a synthetic row
+        if (_rfCurrentTab === 'permit' && isRenewal) {
+          // Find current trip — prefer IN TRANSIT, then WAITING TO LOAD, then most recent
+          var vPlate = (r.vehicle||'').toUpperCase();
+          var vTrips = TRIPS.filter(function(x){
+            return (x.horse||'').toUpperCase()===vPlate || (x.trailer||'').toUpperCase()===vPlate;
+          });
+          t = vTrips.find(function(x){ return (x.status||'').toUpperCase()==='IN TRANSIT'; })
+           || vTrips.find(function(x){ return (x.status||'').toUpperCase()==='WAITING TO LOAD'; })
+           || vTrips.sort(function(a,b){ return new Date(b.loadingDate||0)-new Date(a.loadingDate||0); })[0]
+           || null;
+          t = vTrips[0] || null;
+          // Override row with renewal data
+          var relNo = t ? t.releaseNo : '—';
+          var cust = t ? (t.customer||'—') : '—';
+          var dest = t ? (t.destination||'—') : '—';
+          var driver = t ? (t.driver||'—') : '—';
+          return '<tr>'
+            + '<td><input type="checkbox" class="rf-cb" value="'+r.id+'" data-type="renewal" onchange="updateRfBulkBtns()"></td>'
+            + '<td>'+esc(r.reqNo||'—')+'</td>'
+            + '<td>'+fmtDate(r.requestDate||'')+'</td>'
+            + '<td>'+esc(relNo)+'</td>'
+            + '<td>'+esc(cust)+'</td>'
+            + '<td>'+esc(r.vehicle||'—')+'</td>'
+            + '<td>'+esc(driver)+'</td>'
+            + '<td>'+esc(r.permitType||'—')+'</td>'
+            + '<td>'+esc(dest)+'</td>'
+            + '<td>TZS '+fmt(r.estimatedCost||0)+'</td>'
+            + '<td>'+fmtDate(r.currentExpiry||'')+'</td>'
+            + '<td>'+esc(r.requestedBy||'—')+'</td>'
+            + '<td>'+renewalStatusBadge(r.status)+'</td>'
+            + (function(){
+                var isPending = (r.status||'').toUpperCase()==='PENDING';
+                return '<td class="td-actions">'
+                  + (isPending ? '<button class="actbtn v" onclick="approveRenewalReq(\''+r.id+'\')">✓ Approve</button> '
+                               + '<button class="actbtn d" onclick="rejectRenewalReq(\''+r.id+'\')">✕ Reject</button>'
+                             : (r.status||'').toUpperCase()==='APPROVED'
+                               ? '<button class="actbtn e" onclick="openUploadPermitDoc(\''+esc(r.vehicle)+'\',\''+esc(r.permitType)+'\',\''+r.id+'\')">Upload Doc</button>'
+                               : '')
+                  + '</td>';
+              })()
+            + '</tr>';
         }
         var cells = (_rfCurrentTab === 'vehpermit' || _rfCurrentTab === 'addexp') ? tabDef.row(r) : tabDef.row(r, t);
         var today_dt = new Date(); today_dt.setHours(0,0,0,0);
@@ -13680,41 +13783,99 @@ function rfPrintSelected() {
   };
   var fuelPrice = parseFloat(SETTINGS.fuelPrice||3200);
   var totalAmtTZS=0, totalAmtUSD=0, totalLtrs=0, totalBonusTZS=0;
+  var _sno = 0;
   var rows = recs.map(function(r){
-    var t   = r.tripId ? TRIPS.find(function(x){ return x.id===r.tripId; }) : null;
+    _sno++;
+    var snoTd = '<td style="text-align:center;color:#666">'+_sno+'</td>';
+    var isRenewal = r.reqNo && r.reqNo.startsWith('PRQ-');
+    var t = null;
+    if (r.tripId) {
+      t = TRIPS.find(function(x){ return x.id===r.tripId; });
+    }
+    if (!t && r.tripNo) {
+      t = TRIPS.find(function(x){ return x.tripNo===r.tripNo; });
+    }
+    // For renewal records — find current trip by vehicle plate (horse or trailer)
+    // Prefer IN TRANSIT trip, fall back to most recent
+    if (!t && isRenewal && r.vehicle) {
+      var vPlate2 = (r.vehicle||'').toUpperCase();
+      var vTrips2 = TRIPS.filter(function(x){
+        return (x.horse||'').toUpperCase()===vPlate2 || (x.trailer||'').toUpperCase()===vPlate2;
+      });
+      t = vTrips2.find(function(x){ return (x.status||'').toUpperCase()==='IN TRANSIT'; })
+       || vTrips2.find(function(x){ return (x.status||'').toUpperCase()==='WAITING TO LOAD'; })
+       || vTrips2.sort(function(a,b){ return new Date(b.loadingDate||0)-new Date(a.loadingDate||0); })[0]
+       || null;
+    }
     var drv = t ? DRIVERS.find(function(d){ return d.name===t.driver; }) : null;
-    totalAmtTZS   += parseFloat(r.amountTZS||0);
+    var rowAmt = parseFloat(r.amountTZS||r.estimatedCost||0);
+    totalAmtTZS   += rowAmt;
     totalAmtUSD   += parseFloat(r.amountUSD||0);
     totalLtrs     += parseFloat(r.litres||0);
     totalBonusTZS += parseFloat(r.bonusTZS||0);
-    if (_rfCurrentTab==='fuel') return '<tr><td>'+esc(r.releaseNo||'—')+'</td><td><b>'+esc(r.tripNo||'—')+'</b></td><td>'+esc(r.horse||'—')+'</td><td>'+esc(t?t.driver||'—':'—')+'</td><td>'+esc(drv?drv.licenseNo||'—':'—')+'</td><td>'+esc(t?t.destination||'—':'—')+'</td><td style="text-align:right">'+fmt(r.litres||0)+'</td><td style="text-align:right;font-weight:700">'+fmt(r.amountTZS||0)+'</td></tr>';
-    if (_rfCurrentTab==='mileage') return '<tr><td>'+esc(r.releaseNo||'—')+'</td><td><b>'+esc(r.tripNo||'—')+'</b></td><td>'+esc(r.horse||'—')+'</td><td>'+esc(t?t.driver||'—':'—')+'</td><td>'+esc(t?t.destination||'—':'—')+'</td><td style="text-align:right;font-weight:700">'+fmt(r.amountTZS||0)+'</td><td style="text-align:right">'+(r.bonusTZS>0?fmt(r.bonusTZS):'—')+'</td></tr>';
-    if (_rfCurrentTab==='tolltunduma'||_rfCurrentTab==='tollsakania') return '<tr><td>'+esc(r.releaseNo||'—')+'</td><td><b>'+esc(r.tripNo||'—')+'</b></td><td>'+esc(r.horse||'—')+'</td><td>'+esc(t?t.driver||'—':'—')+'</td><td>'+esc(t?t.destination||'—':'—')+'</td><td style="text-align:right;font-weight:700">'+fmtDec(r.amountUSD||0)+'</td></tr>';
-    if (_rfCurrentTab==='addexp')  return '<tr><td>'+esc(r.horse||'—')+'</td><td>'+esc(r.driver||'—')+'</td><td>'+esc(r.tripNo||'—')+'</td><td>'+esc(r.expenseType||'—')+'</td><td>'+esc(r.description||'—')+'</td><td>'+esc(r.supplier||'—')+'</td><td style="text-align:right">'+(r.qty?fmt(r.qty):'—')+'</td><td>'+esc(r.unit||'—')+'</td><td style="text-align:right;font-weight:700">'+fmt(r.amountTZS||0)+'</td><td>'+esc(r.chargeTo||'—')+'</td></tr>';
-    return '<tr><td>'+esc(r.releaseNo||'—')+'</td><td><b>'+esc(r.tripNo||'—')+'</b></td><td>'+esc(r.horse||'—')+'</td><td>'+esc(t?t.driver||'—':'—')+'</td><td>'+esc(r.permitType||r.description||'—')+'</td><td>'+esc(t?t.destination||'—':'—')+'</td><td style="text-align:right;font-weight:700">'+fmt(r.amountTZS||0)+'</td><td>'+fmtDate(r.permitExpiry||'')+'</td></tr>';
+    if (_rfCurrentTab==='fuel') return '<tr>'+snoTd+'<td>'+esc(r.releaseNo||'—')+'</td><td><b>'+esc(r.tripNo||'—')+'</b></td><td>'+esc(r.horse||'—')+'</td><td>'+esc(t?t.driver||'—':'—')+'</td><td>'+esc(drv?drv.licenseNo||'—':'—')+'</td><td>'+esc(t?t.destination||'—':'—')+'</td><td style="text-align:right">'+fmt(r.litres||0)+'</td><td style="text-align:right;font-weight:700">'+fmt(r.amountTZS||0)+'</td></tr>';
+    if (_rfCurrentTab==='mileage') return '<tr>'+snoTd+'<td>'+esc(r.releaseNo||'—')+'</td><td><b>'+esc(r.tripNo||'—')+'</b></td><td>'+esc(r.horse||'—')+'</td><td>'+esc(t?t.driver||'—':'—')+'</td><td>'+esc(t?t.destination||'—':'—')+'</td><td style="text-align:right;font-weight:700">'+fmt(r.amountTZS||0)+'</td><td style="text-align:right">'+(r.bonusTZS>0?fmt(r.bonusTZS):'—')+'</td></tr>';
+    if (_rfCurrentTab==='tolltunduma'||_rfCurrentTab==='tollsakania') return '<tr>'+snoTd+'<td>'+esc(r.releaseNo||'—')+'</td><td><b>'+esc(r.tripNo||'—')+'</b></td><td>'+esc(r.horse||'—')+'</td><td>'+esc(t?t.driver||'—':'—')+'</td><td>'+esc(t?t.destination||'—':'—')+'</td><td style="text-align:right;font-weight:700">'+fmtDec(r.amountUSD||0)+'</td></tr>';
+    if (_rfCurrentTab==='addexp')  return '<tr>'+snoTd+'<td>'+esc(r.horse||'—')+'</td><td>'+esc(r.driver||'—')+'</td><td>'+esc(r.tripNo||'—')+'</td><td>'+esc(r.expenseType||'—')+'</td><td>'+esc(r.description||'—')+'</td><td>'+esc(r.supplier||'—')+'</td><td style="text-align:right">'+(r.qty?fmt(r.qty):'—')+'</td><td>'+esc(r.unit||'—')+'</td><td style="text-align:right;font-weight:700">'+fmt(r.amountTZS||0)+'</td><td>'+esc(r.chargeTo||'—')+'</td></tr>';
+    return '<tr>'+snoTd+'<td>'+esc(r.releaseNo||(t?t.releaseNo:'')||'—')+'</td><td><b>'+esc(r.tripNo||(t?t.tripNo:'')||'—')+'</b></td><td>'+esc(r.horse||r.vehicle||(t?t.horse:'')||'—')+'</td><td>'+esc(t?t.driver||'—':'—')+'</td><td>'+esc(r.permitType||r.description||'—')+'</td><td>'+esc(r.destination||(t?t.destination:'')||'—')+'</td><td style="text-align:right;font-weight:700">'+fmt(r.amountTZS||r.estimatedCost||0)+'</td><td>'+fmtDate(r.permitExpiry||r.currentExpiry||'')+'</td></tr>';
   }).join('');
   var theadMap = {
-    fuel:    '<tr><th>Release</th><th>Trip No</th><th>Truck</th><th>Driver</th><th>License No</th><th>Destination</th><th style="text-align:right">Litres</th><th style="text-align:right">Amount (TZS)</th></tr>',
-    mileage: '<tr><th>Release</th><th>Trip No</th><th>Truck</th><th>Driver</th><th>Destination</th><th style="text-align:right">Amount (TZS)</th><th style="text-align:right">Bonus (TZS)</th></tr>',
-    tolltunduma: '<tr><th>Release</th><th>Trip No</th><th>Truck</th><th>Driver</th><th>Destination</th><th style="text-align:right">Amount (USD)</th></tr>',
-    tollsakania: '<tr><th>Release</th><th>Trip No</th><th>Truck</th><th>Driver</th><th>Destination</th><th style="text-align:right">Amount (USD)</th></tr>',
-    permit:  '<tr><th>Release</th><th>Trip No</th><th>Truck</th><th>Driver</th><th>Permit Type</th><th>Destination</th><th style="text-align:right">Amount (TZS)</th><th>Expiry</th></tr>',
-    addexp:  '<tr><th>Truck</th><th>Driver</th><th>Trip</th><th>Type</th><th>Description</th><th>Supplier</th><th style="text-align:right">Qty</th><th>Unit</th><th style="text-align:right">Amount (TZS)</th><th>Charge To</th></tr>'
+    fuel:    '<tr><th style="width:32px;text-align:center">S/No</th><th>Release</th><th>Trip No</th><th>Truck</th><th>Driver</th><th>License No</th><th>Destination</th><th style="text-align:right">Litres</th><th style="text-align:right">Amount (TZS)</th></tr>',
+    mileage: '<tr><th style="width:32px;text-align:center">S/No</th><th>Release</th><th>Trip No</th><th>Truck</th><th>Driver</th><th>Destination</th><th style="text-align:right">Amount (TZS)</th><th style="text-align:right">Bonus (TZS)</th></tr>',
+    tolltunduma: '<tr><th style="width:32px;text-align:center">S/No</th><th>Release</th><th>Trip No</th><th>Truck</th><th>Driver</th><th>Destination</th><th style="text-align:right">Amount (USD)</th></tr>',
+    tollsakania: '<tr><th style="width:32px;text-align:center">S/No</th><th>Release</th><th>Trip No</th><th>Truck</th><th>Driver</th><th>Destination</th><th style="text-align:right">Amount (USD)</th></tr>',
+    permit:  '<tr><th style="width:32px;text-align:center">S/No</th><th>Release</th><th>Trip No</th><th>Truck</th><th>Driver</th><th>Permit Type</th><th>Destination</th><th style="text-align:right">Amount (TZS)</th><th>Expiry</th></tr>',
+    addexp:  '<tr><th style="width:32px;text-align:center">S/No</th><th>Truck</th><th>Driver</th><th>Trip</th><th>Type</th><th>Description</th><th>Supplier</th><th style="text-align:right">Qty</th><th>Unit</th><th style="text-align:right">Amount (TZS)</th><th>Charge To</th></tr>'
   };
   var tfootRows;
   if (_rfCurrentTab === 'tolltunduma' || _rfCurrentTab === 'tollsakania') {
-    tfootRows = '<tr><td colspan="5" style="text-align:right">TOTAL</td><td style="text-align:right">USD '+fmtDec(totalAmtUSD)+'</td></tr>';
+    tfootRows = '<tr><td colspan="6" style="text-align:right">TOTAL</td><td style="text-align:right">USD '+fmtDec(totalAmtUSD)+'</td></tr>';
   } else if (_rfCurrentTab === 'fuel') {
-    tfootRows = '<tr><td colspan="6" style="text-align:right">TOTAL</td><td style="text-align:right">'+fmt(totalLtrs)+' Ltrs</td><td style="text-align:right">TZS '+fmt(totalAmtTZS)+'</td></tr>';
+    tfootRows = '<tr><td colspan="7" style="text-align:right">TOTAL</td><td style="text-align:right">'+fmt(totalLtrs)+' Ltrs</td><td style="text-align:right">TZS '+fmt(totalAmtTZS)+'</td></tr>';
   } else if (_rfCurrentTab === 'mileage') {
-    tfootRows = '<tr><td colspan="5" style="text-align:right">TOTAL</td><td style="text-align:right">TZS '+fmt(totalAmtTZS)+'</td><td style="text-align:right">TZS '+fmt(totalBonusTZS)+'</td></tr>'
-      + '<tr><td colspan="5" style="text-align:right">GRAND TOTAL (incl. Bonus)</td><td colspan="2" style="text-align:right">TZS '+fmt(totalAmtTZS+totalBonusTZS)+'</td></tr>';
+    tfootRows = '<tr><td colspan="6" style="text-align:right">TOTAL</td><td style="text-align:right">TZS '+fmt(totalAmtTZS)+'</td><td style="text-align:right">TZS '+fmt(totalBonusTZS)+'</td></tr>'
+      + '<tr><td colspan="6" style="text-align:right">GRAND TOTAL (incl. Bonus)</td><td colspan="2" style="text-align:right">TZS '+fmt(totalAmtTZS+totalBonusTZS)+'</td></tr>';
   } else if (_rfCurrentTab === 'permit') {
-    tfootRows = '<tr><td colspan="6" style="text-align:right">TOTAL</td><td style="text-align:right">TZS '+fmt(totalAmtTZS)+'</td><td></td></tr>';
+    // Build permit type summary
+    var permitSummary = {};
+    recs.forEach(function(r){
+      var pt = r.permitType || r.description || 'Unknown';
+      var amt = parseFloat(r.amountTZS||r.estimatedCost||0);
+      if (!permitSummary[pt]) permitSummary[pt] = {count:0, total:0};
+      permitSummary[pt].count++;
+      permitSummary[pt].total += amt;
+    });
+    var summaryRows = Object.keys(permitSummary).sort(function(a,b){
+      return permitSummary[b].total - permitSummary[a].total; // sort by highest cost
+    }).map(function(pt){
+      var s = permitSummary[pt];
+      return '<tr><td style="padding:5px 10px"><b>'+esc(pt)+'</b></td>'
+           + '<td style="padding:5px 10px;text-align:center">'+s.count+'</td>'
+           + '<td style="padding:5px 10px;text-align:right;font-weight:700">TZS '+fmt(s.total)+'</td></tr>';
+    }).join('');
+    var summaryHtml = '<div style="margin-top:28px;page-break-inside:avoid">'
+      + '<div style="font-size:12px;font-weight:700;color:#0a2d6e;border-bottom:2px solid #0a2d6e;padding-bottom:4px;margin-bottom:8px">SUMMARY BY PERMIT TYPE</div>'
+      + '<table style="width:100%;border-collapse:collapse;font-size:12px">'
+      + '<thead><tr style="background:#f0f4ff">'
+      + '<th style="padding:6px 10px;text-align:left;border:1px solid #ddd">Permit Type</th>'
+      + '<th style="padding:6px 10px;text-align:center;border:1px solid #ddd">Count</th>'
+      + '<th style="padding:6px 10px;text-align:right;border:1px solid #ddd">Total Cost (TZS)</th>'
+      + '</tr></thead><tbody>'
+      + summaryRows
+      + '</tbody><tfoot><tr style="background:#e8edf7">'
+      + '<td style="padding:6px 10px;font-weight:700;border:1px solid #ddd">GRAND TOTAL</td>'
+      + '<td style="padding:6px 10px;text-align:center;font-weight:700;border:1px solid #ddd">'+recs.length+'</td>'
+      + '<td style="padding:6px 10px;text-align:right;font-weight:700;border:1px solid #ddd">TZS '+fmt(totalAmtTZS)+'</td>'
+      + '</tr></tfoot></table></div>';
+    tfootRows = '<tr style="background:#f0f4ff"><td colspan="7" style="text-align:right;font-weight:700">TOTAL ('+recs.length+' permit'+( recs.length!==1?'s':'')+')</td>'
+      + '<td style="text-align:right;font-weight:700">TZS '+fmt(totalAmtTZS)+'</td><td></td></tr>';
+    // Store summary to append after extraInfo is built
+    window._permitPrintSummaryHtml = summaryHtml;
   } else {
-    tfootRows = '<tr><td colspan="8" style="text-align:right">TOTAL</td><td style="text-align:right">TZS '+fmt(totalAmtTZS)+'</td><td></td></tr>';
+    tfootRows = '<tr><td colspan="9" style="text-align:right">TOTAL</td><td style="text-align:right">TZS '+fmt(totalAmtTZS)+'</td><td></td></tr>';
   }
   var extraInfo = _rfCurrentTab==='fuel'?'<p style="font-size:11px;color:#444;margin-bottom:10px">Fuel Price: TZS '+fmt(fuelPrice)+'/ltr</p>':_rfCurrentTab==='tolltunduma'?'<p style="font-size:11px;color:#444;margin-bottom:10px">Border: Tunduma &nbsp;&nbsp; Rate: USD '+fmtDec(parseFloat(SETTINGS.tollTunduma||330))+' per truck</p>':_rfCurrentTab==='tollsakania'?'<p style="font-size:11px;color:#444;margin-bottom:10px">Border: Sakania &nbsp;&nbsp; Rate: USD '+fmtDec(parseFloat(SETTINGS.tollSakania||1535))+' per truck</p>':'';
+  if (window._permitPrintSummaryHtml) { extraInfo += window._permitPrintSummaryHtml; window._permitPrintSummaryHtml = null; }
   var reqby = recs[0] ? recs[0].requestedBy||'' : '';
   _printFormWindow({
     title: titleMap[_rfCurrentTab],
@@ -14929,7 +15090,7 @@ function renderBudget() {
             && parseFloat(trip.excessLoss||0) > 0
             && !FUEL_LOSS.some(function(f){return f.tripId===trip.id||f.tripNo===trip.tripNo;});
       }).reduce(function(s,trip){
-        return s + Math.round(parseFloat(trip.excessLoss||0) * parseFloat(SETTINGS.fuelPrice||3200));
+        return s + Math.round(parseFloat(trip.excessLoss||0) * parseFloat(trip.ratePerLitre||SETTINGS.fuelLossRate||SETTINGS.fuelPrice||3200));
       }, 0);
 
       // ── 4. Deductions ─────────────────────────────────────────────

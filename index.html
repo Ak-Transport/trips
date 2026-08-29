@@ -13099,70 +13099,73 @@ function updatePrBulkBtns() {
 }
 
 async function bulkApproveRequests() {
-  var tripIds = Array.from(document.querySelectorAll('.pr-cb:checked')).map(function(c){ return c.value; });
-  var vehIds  = Array.from(document.querySelectorAll('.vpr-cb:checked')).map(function(c){ return c.value; });
-  var total   = tripIds.length + vehIds.length;
+  // Collect from all checkbox types — pr-cb (pending requests), vpr-cb (vehicle permits), rf-cb (all requests tab)
+  var fuelIds    = Array.from(document.querySelectorAll('.rf-cb[data-type="fuel"]:checked,.pr-cb:checked')).map(function(c){ return c.value; });
+  var renewalIds = Array.from(document.querySelectorAll('.rf-cb[data-type="renewal"]:checked,.vpr-cb:checked')).map(function(c){ return c.value; });
+  var total = fuelIds.length + renewalIds.length;
   if (!total) { toast('Select at least one request','er'); return; }
-  var allowedTripIds = tripIds.filter(function(id){ return _p17CanApproveRequest(id, 'FUEL_REQUEST'); });
-  var allowedVehIds  = vehIds.filter(function(id){ return _p17CanApproveRequest(id, 'RENEWAL'); });
-  var skipped = total - allowedTripIds.length - allowedVehIds.length;
-  if (!allowedTripIds.length && !allowedVehIds.length) { toast('You do not have permission to approve the selected request(s)','er'); return; }
-  if (!confirm('Approve ' + (allowedTripIds.length+allowedVehIds.length) + ' request' + ((allowedTripIds.length+allowedVehIds.length)!==1?'s':'') + (skipped?(' ('+skipped+' skipped — no permission)'):'') + '?')) return;
+  var allowedFuelIds    = fuelIds.filter(function(id){ return _p17CanApproveRequest(id, 'FUEL_REQUEST'); });
+  var allowedRenewalIds = renewalIds.filter(function(id){ return _p17CanApproveRequest(id, 'RENEWAL'); });
+  var skipped = total - allowedFuelIds.length - allowedRenewalIds.length;
+  if (!allowedFuelIds.length && !allowedRenewalIds.length) { toast('You do not have permission to approve the selected request(s)','er'); return; }
+  if (!confirm('Approve ' + (allowedFuelIds.length+allowedRenewalIds.length) + ' request' + ((allowedFuelIds.length+allowedRenewalIds.length)!==1?'s':'') + (skipped?(' ('+skipped+' skipped — no permission)'):'') + '?')) return;
 
-  var btn = document.getElementById('pr-bulk-approve-btn');
+  var btn = document.getElementById('pr-bulk-approve-btn') || document.getElementById('rf-bulk-approve-btn');
   if (btn) { btn.disabled = true; btn.textContent = 'Approving...'; }
   var done = 0, errors = 0;
   var approver = CURRENT_USER ? (CURRENT_USER.name||CURRENT_USER.username) : 'ADMIN';
 
-  for (var i=0; i<allowedTripIds.length; i++) {
-    var r = FUEL_REQUESTS.find(function(x){ return x.id===allowedTripIds[i]; });
+  for (var i=0; i<allowedFuelIds.length; i++) {
+    var r = FUEL_REQUESTS.find(function(x){ return x.id===allowedFuelIds[i]; });
     if (!r || r.status!=='PENDING') continue;
     r.status='APPROVED'; r.approvedBy=approver; r.approvedAt=today();
     try { await callAPI('updateFuelRequest',{record:r}); done++; } catch(e){ errors++; }
   }
-  for (var i=0; i<allowedVehIds.length; i++) {
-    var r = RENEWAL_REQS.find(function(x){ return x.id===allowedVehIds[i]; });
+  for (var i=0; i<allowedRenewalIds.length; i++) {
+    var r = RENEWAL_REQS.find(function(x){ return x.id===allowedRenewalIds[i]; });
     if (!r || r.status!=='PENDING') continue;
     r.status='APPROVED'; r.approvedBy=approver; r.approvedAt=today();
     try { await callAPI('updateRenewalReq',{record:r}); done++; } catch(e){ errors++; }
   }
   toast(done + ' approved' + (errors?' · '+errors+' failed':'') + (skipped?' · '+skipped+' skipped':'') + ' ✓','ok');
-  updateBadges(); renderPendingRequests();
+  updateBadges();
+  if (currentView === 'reqforms') window.renderRfTab(); else renderPendingRequests();
   if (btn) { btn.disabled = false; btn.innerHTML = '&#9989; Approve Selected'; }
 }
 
 async function bulkRejectRequests() {
-  var tripIds = Array.from(document.querySelectorAll('.pr-cb:checked')).map(function(c){ return c.value; });
-  var vehIds  = Array.from(document.querySelectorAll('.vpr-cb:checked')).map(function(c){ return c.value; });
-  var total   = tripIds.length + vehIds.length;
+  var fuelIds    = Array.from(document.querySelectorAll('.rf-cb[data-type="fuel"]:checked,.pr-cb:checked')).map(function(c){ return c.value; });
+  var renewalIds = Array.from(document.querySelectorAll('.rf-cb[data-type="renewal"]:checked,.vpr-cb:checked')).map(function(c){ return c.value; });
+  var total = fuelIds.length + renewalIds.length;
   if (!total) { toast('Select at least one request','er'); return; }
-  var allowedTripIds = tripIds.filter(function(id){ return _p17CanApproveRequest(id, 'FUEL_REQUEST'); });
-  var allowedVehIds  = vehIds.filter(function(id){ return _p17CanApproveRequest(id, 'RENEWAL'); });
-  var skipped = total - allowedTripIds.length - allowedVehIds.length;
-  if (!allowedTripIds.length && !allowedVehIds.length) { toast('You do not have permission to reject the selected request(s)','er'); return; }
+  var allowedFuelIds    = fuelIds.filter(function(id){ return _p17CanApproveRequest(id, 'FUEL_REQUEST'); });
+  var allowedRenewalIds = renewalIds.filter(function(id){ return _p17CanApproveRequest(id, 'RENEWAL'); });
+  var skipped = total - allowedFuelIds.length - allowedRenewalIds.length;
+  if (!allowedFuelIds.length && !allowedRenewalIds.length) { toast('You do not have permission to reject the selected request(s)','er'); return; }
   var reason = prompt('Reason for rejection (optional):');
   if (reason === null) return;
-  if (!confirm('Reject ' + (allowedTripIds.length+allowedVehIds.length) + ' request' + ((allowedTripIds.length+allowedVehIds.length)!==1?'s':'') + (skipped?(' ('+skipped+' skipped — no permission)'):'') + '?')) return;
+  if (!confirm('Reject ' + (allowedFuelIds.length+allowedRenewalIds.length) + ' request' + ((allowedFuelIds.length+allowedRenewalIds.length)!==1?'s':'') + (skipped?(' ('+skipped+' skipped — no permission)'):'') + '?')) return;
 
-  var btn = document.getElementById('pr-bulk-reject-btn');
+  var btn = document.getElementById('pr-bulk-reject-btn') || document.getElementById('rf-bulk-reject-btn');
   if (btn) { btn.disabled = true; btn.textContent = 'Rejecting...'; }
   var done = 0, errors = 0;
   var rejecter = CURRENT_USER ? (CURRENT_USER.name||CURRENT_USER.username) : 'ADMIN';
 
-  for (var i=0; i<allowedTripIds.length; i++) {
-    var r = FUEL_REQUESTS.find(function(x){ return x.id===allowedTripIds[i]; });
+  for (var i=0; i<allowedFuelIds.length; i++) {
+    var r = FUEL_REQUESTS.find(function(x){ return x.id===allowedFuelIds[i]; });
     if (!r || r.status!=='PENDING') continue;
     r.status='REJECTED'; r.rejectedBy=rejecter; r.rejectedAt=today(); r.rejectionReason=reason||'';
     try { await callAPI('updateFuelRequest',{record:r}); done++; } catch(e){ errors++; }
   }
-  for (var i=0; i<allowedVehIds.length; i++) {
-    var r = RENEWAL_REQS.find(function(x){ return x.id===allowedVehIds[i]; });
+  for (var i=0; i<allowedRenewalIds.length; i++) {
+    var r = RENEWAL_REQS.find(function(x){ return x.id===allowedRenewalIds[i]; });
     if (!r || r.status!=='PENDING') continue;
     r.status='REJECTED'; r.rejectedBy=rejecter; r.rejectedAt=today(); r.rejectionReason=reason||'';
     try { await callAPI('updateRenewalReq',{record:r}); done++; } catch(e){ errors++; }
   }
   toast(done + ' rejected' + (errors?' · '+errors+' failed':'') + (skipped?' · '+skipped+' skipped':'') + ' ✓','ok');
-  updateBadges(); renderPendingRequests();
+  updateBadges();
+  if (currentView === 'reqforms') window.renderRfTab(); else renderPendingRequests();
   if (btn) { btn.disabled = false; btn.innerHTML = '&#10060; Reject Selected'; }
 }
 
@@ -13579,14 +13582,9 @@ function renderRfTab() {
     + data.map(function(r){
         var t = null;
         var isRenewal = r.reqNo && r.reqNo.startsWith('PRQ-');
-        if (_rfCurrentTab === 'permit' && !isRenewal) {
-          // FUEL_REQUEST permit — find trip via tripId/tripNo
-          if (r.tripId) t = TRIPS.find(function(x){ return x.id===r.tripId; });
-          if (!t && r.tripNo) t = TRIPS.find(function(x){ return x.tripNo===r.tripNo; });
-        }
-        // For renewal records in trip permit tab — build a synthetic row
+
         if (_rfCurrentTab === 'permit' && isRenewal) {
-          // Find current trip — prefer IN TRANSIT, then WAITING TO LOAD, then most recent
+          // Renewal record — find current trip by vehicle plate
           var vPlate = (r.vehicle||'').toUpperCase();
           var vTrips = TRIPS.filter(function(x){
             return (x.horse||'').toUpperCase()===vPlate || (x.trailer||'').toUpperCase()===vPlate;
@@ -13595,8 +13593,14 @@ function renderRfTab() {
            || vTrips.find(function(x){ return (x.status||'').toUpperCase()==='WAITING TO LOAD'; })
            || vTrips.sort(function(a,b){ return new Date(b.loadingDate||0)-new Date(a.loadingDate||0); })[0]
            || null;
-          t = vTrips[0] || null;
-          // Override row with renewal data
+        } else if (_rfCurrentTab !== 'vehpermit' && _rfCurrentTab !== 'addexp') {
+          // All other tabs (fuel, mileage, tolltunduma, tollsakania, permit non-renewal)
+          // Find trip via tripId then tripNo
+          if (r.tripId) t = TRIPS.find(function(x){ return x.id===r.tripId; });
+          if (!t && r.tripNo) t = TRIPS.find(function(x){ return x.tripNo===r.tripNo; });
+        }
+        // For renewal records in trip permit tab — build custom row
+        if (_rfCurrentTab === 'permit' && isRenewal) {
           var relNo = t ? t.releaseNo : '—';
           var cust = t ? (t.customer||'—') : '—';
           var dest = t ? (t.destination||'—') : '—';
@@ -13618,8 +13622,8 @@ function renderRfTab() {
             + (function(){
                 var isPending = (r.status||'').toUpperCase()==='PENDING';
                 return '<td class="td-actions">'
-                  + (isPending ? '<button class="actbtn v" onclick="approveRenewalReq(\''+r.id+'\')">✓ Approve</button> '
-                               + '<button class="actbtn d" onclick="rejectRenewalReq(\''+r.id+'\')">✕ Reject</button>'
+                  + (isPending ? '<button class="actbtn v" onclick="approveSingleRequest(\''+r.id+'\',\'RENEWAL\',this)">✓ Approve</button> '
+                               + '<button class="actbtn d" onclick="rejectSingleRequest(\''+r.id+'\',\'RENEWAL\',this)">✕ Reject</button>'
                              : (r.status||'').toUpperCase()==='APPROVED'
                                ? '<button class="actbtn e" onclick="openUploadPermitDoc(\''+esc(r.vehicle)+'\',\''+esc(r.permitType)+'\',\''+r.id+'\')">Upload Doc</button>'
                                : '')

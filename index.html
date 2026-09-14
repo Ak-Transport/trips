@@ -2651,7 +2651,8 @@ async function callAPI(action,data,_retryCount,maxRetries){
   // clock - otherwise time spent queued behind other requests would
   // eat into this request's 45s budget before it's even been sent.
   await _acquireApiSlot();
-  var ctrl=new AbortController(),timer=setTimeout(function(){ctrl.abort();},45000);
+  var timeoutMs = ['uploadReleaseDoc','uploadPermitDoc','uploadPaymentLetter','uploadSignedPdf'].includes(action) ? 300000 : 45000;
+  var ctrl=new AbortController(),timer=setTimeout(function(){ctrl.abort();},timeoutMs);
   try{
     try{
       var res=await fetch(API,{method:'POST',body:JSON.stringify(Object.assign({action:action},data)),headers:{'Content-Type':'text/plain'},signal:ctrl.signal});
@@ -6222,6 +6223,16 @@ function _onMethodChangeToggleLetter(selectEl, prefix) {
 function _handleLetterSelect(input, prefix) {
   var file = input.files[0];
   if (!file) return;
+  var maxMB = 4;
+  if (file.size > maxMB * 1024 * 1024) {
+    var label = document.getElementById(prefix+'-letter-label');
+    var zone  = document.getElementById(prefix+'-letter-zone');
+    if (label) label.innerHTML = '⚠️ <b>' + esc(file.name) + '</b> (' + (file.size/1024/1024).toFixed(1) + ' MB) — File too large. Please compress to under ' + maxMB + 'MB.';
+    if (zone)  { zone.style.borderColor = '#f87171'; zone.style.background = '#fef2f2'; }
+    input.value = '';
+    window['_letterFileData_'+prefix] = null;
+    return;
+  }
   var reader = new FileReader();
   reader.onload = function(e) {
     window['_letterFileData_'+prefix] = e.target.result;
@@ -6239,7 +6250,7 @@ async function _uploadLetterIfNeeded(prefix, refLabel) {
   var name = (refLabel||'letter') + '_' + new Date().getTime() + '.pdf';
   var res = await callAPI('uploadPaymentLetter', { fileName: name, fileData: data });
   if (res && res.error) throw new Error(res.error);
-  return res ? (res.viewUrl || '') : '';
+  return res ? (res.downloadUrl || res.viewUrl || '') : '';
 }
 async function _uploadReleaseDocIfNeeded(prefix, refLabel) {
   var data = window['_letterFileData_'+prefix];
@@ -16137,7 +16148,8 @@ async function _uploadTripDocIfNeeded(prefix, refLabel) {
   var name = (refLabel||'trip') + '_' + new Date().getTime() + '.pdf';
   var res = await callAPI('uploadReleaseDoc', { fileName: name, fileData: data });
   if (res && res.error) throw new Error(res.error);
-  return res ? (res.viewUrl || '') : '';
+  // Prefer direct download URL over view URL to avoid Drive auth issues
+  return res ? (res.downloadUrl || res.viewUrl || '') : '';
 }
 
 function onAtLoadDateChange(n){
@@ -16159,6 +16171,17 @@ function onAtOffDateChange(n){
 function _handleAtDocSelect(input, prefix){
   var file = input.files[0];
   if (!file) return;
+  // Warn if file is too large — Apps Script has limits
+  var maxMB = 4;
+  if (file.size > maxMB * 1024 * 1024) {
+    var zone  = document.getElementById(prefix+'-zone');
+    var label = document.getElementById(prefix+'-label');
+    if (label) label.innerHTML = '⚠️ <b>' + esc(file.name) + '</b> (' + (file.size/1024/1024).toFixed(1) + ' MB) — File too large. Please compress to under ' + maxMB + 'MB before uploading.';
+    if (zone)  { zone.style.borderColor = '#f87171'; zone.style.background = '#fef2f2'; }
+    input.value = '';
+    window['_letterFileData_'+prefix] = null;
+    return;
+  }
   var reader = new FileReader();
   reader.onload = function(e){
     window['_letterFileData_'+prefix] = e.target.result;

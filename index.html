@@ -6877,18 +6877,33 @@ async function saveEditTrip() {
     await callAPI('updateTrip', {record: t});
     var idx = TRIPS.findIndex(function(x){ return x.id === _editingTripId; });
     if (idx >= 0) TRIPS[idx] = t;
-    _pnlCache = null; // dates may have changed — force a fresh P&L cache
+    _pnlCache = null;
     toast('Trip ' + esc(t.tripNo) + ' updated ✓', 'ok');
-    // Auto-create loading requests if loading date is filled
-    await autoCreateLoadingRequests(t);
-    // Auto-create shortage record if completed with excess loss
-    await autoCreateShortageRecord(t);
-    await _syncReleaseStatusFromTrips(t.releaseId);
+    // Re-enable button and close modal IMMEDIATELY — don't make user wait
+    btn.disabled = false; btn.innerHTML = '&#128190; Save Changes';
     updateBadges(); renderTrips(); renderBudget();
     cancelEditTrip();
+    // Run post-save operations in background — user doesn't need to wait
+    var _savedTripId = _editingTripId;
+    var _savedTrip = t;
+    setTimeout(function() {
+      // Only create loading requests if loading date is set
+      if (_savedTrip.loadingDate) {
+        autoCreateLoadingRequests(_savedTrip).catch(function(e){
+          Logger && Logger.log && Logger.log('autoCreateLoadingRequests error: '+e.message);
+        });
+      }
+      // Only create shortage if trip is completed with excess loss
+      if (_savedTrip.status === 'COMPLETED' && parseFloat(_savedTrip.excessLoss||0) > 0) {
+        autoCreateShortageRecord(_savedTrip).catch(function(){});
+      }
+      // Sync release status in background
+      if (_savedTrip.releaseId) {
+        _syncReleaseStatusFromTrips(_savedTrip.releaseId).catch(function(){});
+      }
+    }, 500);
   } catch(e) {
     toast('Error: '+e.message,'er');
-  } finally {
     btn.disabled = false; btn.innerHTML = '&#128190; Save Changes';
   }
 }

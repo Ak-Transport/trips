@@ -2651,7 +2651,7 @@ async function callAPI(action,data,_retryCount,maxRetries){
   // clock - otherwise time spent queued behind other requests would
   // eat into this request's 45s budget before it's even been sent.
   await _acquireApiSlot();
-  var timeoutMs = ['uploadReleaseDoc','uploadPermitDoc','uploadPaymentLetter','uploadSignedPdf'].includes(action) ? 300000 : 45000;
+  var timeoutMs = ['uploadReleaseDoc','uploadPermitDoc','uploadPaymentLetter','uploadSignedPdf'].includes(action) ? 300000 : ['updateShortagePayment','updateFuelLoss'].includes(action) ? 60000 : 45000;
   var ctrl=new AbortController(),timer=setTimeout(function(){ctrl.abort();},timeoutMs);
   try{
     try{
@@ -10203,28 +10203,40 @@ async function approveShortagePayment(paymentId, fuelLossId, btnEl) {
   p.status = 'APPROVED';
   p.approvedBy = CURRENT_USER?(CURRENT_USER.name||CURRENT_USER.username):'ADMIN';
   p.approvedAt = today();
+
+  // Recalculate fuel loss totals
+  var f = FUEL_LOSS.find(function(x){ return x.id === fuelLossId; });
+  var _fPrev = f ? {totalPaidTZS:f.totalPaidTZS,balanceTZS:f.balanceTZS,status:f.status} : null;
+  if (f) {
+    var totalApproved = SHORTAGE_PMTS
+      .filter(function(x){ return x.fuelLossId===fuelLossId && x.status==='APPROVED'; })
+      .reduce(function(sum, x){ return sum + parseFloat(x.amountTZS||0); }, 0);
+    var owed   = parseFloat(f.driverOwsTZS||0);
+    var newBal = Math.max(0, owed - totalApproved);
+    f.totalPaidTZS = totalApproved.toFixed(0);
+    f.balanceTZS   = newBal.toFixed(0);
+    f.status = newBal <= 0 ? 'PAID' : totalApproved > 0 ? 'PARTIAL' : 'UNPAID';
+  }
+
   try {
+    // Only wait for the payment update — user sees result immediately
     await callAPI('updateShortagePayment', {record: p});
-
-    // NOW update FUEL_LOSS totals — only on approval
-    var f = FUEL_LOSS.find(function(x){ return x.id === fuelLossId; });
-    if (f) {
-      // Sum all APPROVED payments for this fuel loss
-      var totalApproved = SHORTAGE_PMTS
-        .filter(function(x){ return x.fuelLossId===fuelLossId && x.status==='APPROVED'; })
-        .reduce(function(sum, x){ return sum + parseFloat(x.amountTZS||0); }, 0);
-      var owed    = parseFloat(f.driverOwsTZS||0);
-      var newBal  = Math.max(0, owed - totalApproved);
-      f.totalPaidTZS = totalApproved.toFixed(0);
-      f.balanceTZS   = newBal.toFixed(0);
-      f.status = newBal <= 0 ? 'PAID' : totalApproved > 0 ? 'PARTIAL' : 'UNPAID';
-      await callAPI('updateFuelLoss', {record: f});
-    }
-
     toast('Payment approved ✓', 'ok');
+    if (btnEl) { btnEl.disabled = false; btnEl.textContent = 'Approve'; }
     openShortageDetail(fuelLossId);
     updateBadges(); window.renderShortage();
-  } catch(e) { p.status=_asPrev.status;p.approvedBy=_asPrev.approvedBy;p.approvedAt=_asPrev.approvedAt;toast('Error: ' + e.message, 'er'); if (btnEl) { btnEl.disabled = false; btnEl.textContent = 'Approve'; } }
+    // Update fuel loss totals in background — no need to block user
+    if (f) {
+      callAPI('updateFuelLoss', {record: f}).catch(function(e){
+        console.error('Background updateFuelLoss failed:', e.message);
+      });
+    }
+  } catch(e) {
+    p.status=_asPrev.status;p.approvedBy=_asPrev.approvedBy;p.approvedAt=_asPrev.approvedAt;
+    if(f&&_fPrev){f.totalPaidTZS=_fPrev.totalPaidTZS;f.balanceTZS=_fPrev.balanceTZS;f.status=_fPrev.status;}
+    toast('Error: ' + e.message, 'er');
+    if (btnEl) { btnEl.disabled = false; btnEl.textContent = 'Approve'; }
+  }
 }
 
 async function rejectShortagePayment(paymentId, fuelLossId, btnEl) {
@@ -10241,6 +10253,7 @@ async function rejectShortagePayment(paymentId, fuelLossId, btnEl) {
   try {
     await callAPI('updateShortagePayment', {record: p});
     toast('Payment rejected', 'ok');
+    if (btnEl) { btnEl.disabled = false; btnEl.textContent = 'Reject'; }
     openShortageDetail(fuelLossId);
     updateBadges(); window.renderShortage();
   } catch(e) { p.status=_rsp2Prev.status;p.rejectedBy=_rsp2Prev.rejectedBy;p.rejectedAt=_rsp2Prev.rejectedAt;p.rejectionReason=_rsp2Prev.rejectionReason;toast('Error: ' + e.message, 'er'); if (btnEl) { btnEl.disabled = false; btnEl.textContent = 'Reject'; } }

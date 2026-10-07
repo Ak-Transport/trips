@@ -1679,6 +1679,7 @@ td,td *{font-size:13px!important;font-family:'Inter',sans-serif!important}
               <option value="UNPAID">&#128308; Unpaid</option>
               <option value="PARTIAL">&#128993; Partial</option>
               <option value="PAID">&#9989; Paid</option>
+              <option value="PENDING APPROVAL">&#9203; Pending Approval</option>
             </select>
             <button class="btn bg" onclick="clearShortageFilter()" style="padding:8px 14px;font-size:12px;white-space:nowrap">&#10005; Clear</button>
           </div>
@@ -1736,6 +1737,7 @@ td,td *{font-size:13px!important;font-family:'Inter',sans-serif!important}
               <option value="UNPAID">&#128308; Unpaid</option>
               <option value="PARTIAL">&#128993; Partial</option>
               <option value="PAID">&#9989; Paid</option>
+              <option value="PENDING APPROVAL">&#9203; Pending Approval</option>
             </select>
             <button class="btn bg" onclick="clearDedFilter()" style="padding:8px 14px;font-size:12px;white-space:nowrap">&#10005; Clear</button>
           </div>
@@ -6150,8 +6152,10 @@ window.renderShortage = function() {
     if(f._auto) paid = 0;
     var bal  = Math.max(0, owed - paid);
     var stt  = bal <= 0 ? 'PAID' : paid > 0 ? 'PARTIAL' : 'UNPAID';
-    return Object.assign({}, f, {_owed:owed, _paid:paid, _bal:bal, _stt:stt});
+    var pendingCnt = SHORTAGE_PMTS.filter(function(p){ return p.fuelLossId===f.id && (p.status||'').toUpperCase()==='PENDING'; }).length;
+    return Object.assign({}, f, {_owed:owed, _paid:paid, _bal:bal, _stt:stt, _pendingCnt:pendingCnt});
   }).filter(function(f){
+    if (sfilt === 'PENDING APPROVAL') return f._pendingCnt > 0;
     if (sfilt && f._stt !== sfilt) return false;
     return true;
   });
@@ -6979,8 +6983,12 @@ function renderDeductions() {
     var paid=DEDUCTION_PMTS.filter(function(p){return p.deductionId===d.id&&(p.status||'').toUpperCase()==='APPROVED';}).reduce(function(s,p){return s+parseFloat(p.amountTZS||0);},0);
     var bal=Math.max(0,owed-paid);
     var stt=bal<=0?'PAID':paid>0?'PARTIAL':'UNPAID';
-    return Object.assign({},d,{_owed:owed,_paid:paid,_bal:bal,_stt:stt});
-  }).filter(function(d){ if(sfilt&&d._stt!==sfilt)return false; return true; });
+    var pendingCnt=DEDUCTION_PMTS.filter(function(p){return p.deductionId===d.id&&(p.status||'').toUpperCase()==='PENDING';}).length;
+    return Object.assign({},d,{_owed:owed,_paid:paid,_bal:bal,_stt:stt,_pendingCnt:pendingCnt});
+  }).filter(function(d){
+    if(sfilt==='PENDING APPROVAL') return d._pendingCnt>0;
+    if(sfilt&&d._stt!==sfilt)return false; return true;
+  });
 
   var tbody=document.getElementById('deductions-tbody');
   var empty=document.getElementById('deductions-empty');
@@ -9907,8 +9915,10 @@ window.renderShortage = function() {
     if(f._auto) paid = 0;
     var bal  = Math.max(0, owed - paid);
     var stt  = bal <= 0 ? 'PAID' : paid > 0 ? 'PARTIAL' : 'UNPAID';
-    return Object.assign({}, f, {_owed:owed, _paid:paid, _bal:bal, _stt:stt});
+    var pendingCnt = SHORTAGE_PMTS.filter(function(p){ return p.fuelLossId===f.id && (p.status||'').toUpperCase()==='PENDING'; }).length;
+    return Object.assign({}, f, {_owed:owed, _paid:paid, _bal:bal, _stt:stt, _pendingCnt:pendingCnt});
   }).filter(function(f){
+    if (sfilt === 'PENDING APPROVAL') return f._pendingCnt > 0;
     if (sfilt && f._stt !== sfilt) return false;
     return true;
   });

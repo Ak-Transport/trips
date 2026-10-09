@@ -5407,7 +5407,7 @@ window.addEventListener('load',function(){initLogin();var el=document.getElement
 
 <!-- PERMIT HISTORY / DETAIL MODAL -->
 <div class="overlay hidden" id="modal-permit-history">
-  <div class="modal" style="max-width:780px">
+  <div class="modal" style="max-width:960px;width:95vw">
     <div class="modalhead">
       <div>
         <div class="modaltitle" id="pmthist-title">🛡️ Permit History</div>
@@ -5419,16 +5419,16 @@ window.addEventListener('load',function(){initLogin();var el=document.getElement
       <!-- Summary strip -->
       <div id="pmthist-summary" style="background:#f0f4ff;border-bottom:1px solid rgba(10,45,110,.1);padding:14px 24px;display:grid;grid-template-columns:repeat(4,1fr);gap:12px"></div>
       <!-- History table -->
-      <div style="overflow:auto;max-height:420px;padding:16px 24px">
-        <table style="width:100%;border-collapse:collapse;font-size:12.5px">
+      <div style="overflow:auto;max-height:55vh;padding:16px 24px">
+        <table style="width:100%;border-collapse:collapse;font-size:12.5px;min-width:760px">
           <thead><tr id="pmthist-thead" style="background:var(--ac);color:#fff">
-            <th style="padding:9px 12px;text-align:left;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.08em">Payment Date</th>
-            <th style="padding:9px 12px;text-align:left;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.08em">Expiry Date</th>
-            <th style="padding:9px 12px;text-align:left;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.08em">Amount Paid</th>
-            <th style="padding:9px 12px;text-align:left;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.08em">Receipt No</th>
-            <th style="padding:9px 12px;text-align:left;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.08em">Document</th>
-            <th style="padding:9px 12px;text-align:left;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.08em">Status</th>
-            <th style="padding:9px 12px;text-align:left;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.08em">Actions</th>
+            <th style="padding:9px 14px;text-align:left;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;white-space:nowrap">Payment Date</th>
+            <th style="padding:9px 14px;text-align:left;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;white-space:nowrap">Expiry Date</th>
+            <th style="padding:9px 14px;text-align:left;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;white-space:nowrap">Amount Paid</th>
+            <th style="padding:9px 14px;text-align:left;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;white-space:nowrap">Receipt No</th>
+            <th style="padding:9px 14px;text-align:left;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;white-space:nowrap">Document</th>
+            <th style="padding:9px 14px;text-align:left;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;white-space:nowrap">Status</th>
+            <th style="padding:9px 14px;text-align:left;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;white-space:nowrap">Actions</th>
           </tr></thead>
           <tbody id="pmthist-tbody"></tbody>
         </table>
@@ -7730,7 +7730,7 @@ function doLogout(){
 
 <!-- PERMIT HISTORY / DETAIL MODAL -->
 <div class="overlay hidden" id="modal-permit-history">
-  <div class="modal" style="max-width:780px">
+  <div class="modal" style="max-width:960px;width:95vw">
     <div class="modalhead">
       <div>
         <div class="modaltitle" id="pmthist-title">🛡️ Permit History</div>
@@ -7742,16 +7742,16 @@ function doLogout(){
       <!-- Summary strip -->
       <div id="pmthist-summary" style="background:#f0f4ff;border-bottom:1px solid rgba(10,45,110,.1);padding:14px 24px;display:grid;grid-template-columns:repeat(4,1fr);gap:12px"></div>
       <!-- History table -->
-      <div style="overflow:auto;max-height:420px;padding:16px 24px">
-        <table style="width:100%;border-collapse:collapse;font-size:12.5px">
+      <div style="overflow:auto;max-height:55vh;padding:16px 24px">
+        <table style="width:100%;border-collapse:collapse;font-size:12.5px;min-width:760px">
           <thead><tr id="pmthist-thead" style="background:var(--ac);color:#fff">
-            <th style="padding:9px 12px;text-align:left;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.08em">Payment Date</th>
-            <th style="padding:9px 12px;text-align:left;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.08em">Expiry Date</th>
-            <th style="padding:9px 12px;text-align:left;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.08em">Amount Paid</th>
-            <th style="padding:9px 12px;text-align:left;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.08em">Receipt No</th>
-            <th style="padding:9px 12px;text-align:left;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.08em">Document</th>
-            <th style="padding:9px 12px;text-align:left;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.08em">Status</th>
-            <th style="padding:9px 12px;text-align:left;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.08em">Actions</th>
+            <th style="padding:9px 14px;text-align:left;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;white-space:nowrap">Payment Date</th>
+            <th style="padding:9px 14px;text-align:left;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;white-space:nowrap">Expiry Date</th>
+            <th style="padding:9px 14px;text-align:left;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;white-space:nowrap">Amount Paid</th>
+            <th style="padding:9px 14px;text-align:left;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;white-space:nowrap">Receipt No</th>
+            <th style="padding:9px 14px;text-align:left;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;white-space:nowrap">Document</th>
+            <th style="padding:9px 14px;text-align:left;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;white-space:nowrap">Status</th>
+            <th style="padding:9px 14px;text-align:left;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;white-space:nowrap">Actions</th>
           </tr></thead>
           <tbody id="pmthist-tbody"></tbody>
         </table>
@@ -8388,8 +8388,8 @@ async function savePermitUpload() {
     });
     var docUrl = uploadResult.viewUrl || uploadResult.url || '';
 
-    // Find or create permit record
-    var existing = PERMITS.filter(function(p){
+    // Always create a NEW permit record so history accumulates
+    var existingForMeta = PERMITS.filter(function(p){
       return (p.vehicle||'').toUpperCase()===vehicle.toUpperCase() && p.permitType===type;
     }).sort(function(a,b){ return new Date(b.paymentDate||0)-new Date(a.paymentDate||0); })[0];
 
@@ -8397,9 +8397,9 @@ async function savePermitUpload() {
     var PERMIT_APPLIES   = {Insurance:'Horse/Trailer', LATRA:'Horse/Trailer', C28:'Trailer only', Calibration:'Trailer only'};
 
     var permitRecord = {
-      id:          existing ? existing.id : uuid(),
+      id:          uuid(),
       vehicle:     vehicle,
-      vehicleType: existing ? existing.vehicleType : '',
+      vehicleType: existingForMeta ? existingForMeta.vehicleType : '',
       permitType:  type,
       appliesTo:   PERMIT_APPLIES[type] || '',
       paymentDate: payDate,
@@ -8411,13 +8411,9 @@ async function savePermitUpload() {
       notes:       notes
     };
 
-    if (existing) {
-      await callAPI('updatePermit', {record: permitRecord});
-      var idx = PERMITS.findIndex(function(p){ return p.id === existing.id; });
-      if (idx >= 0) PERMITS[idx] = permitRecord;
-    } else {
-      await callAPI('addPermit', {record: permitRecord});
-    }
+    var _pRes = await callAPI('addPermit', {record: permitRecord});
+    if (_pRes && _pRes.id) permitRecord.id = _pRes.id;
+    PERMITS.push(permitRecord);
 
     // Mark renewal as COMPLETED
     if (renewalId) {
@@ -8456,11 +8452,16 @@ function openPermitHistory(vehicle, type) {
     return (p.vehicle||'').toUpperCase() === vehicle.toUpperCase() && p.permitType === type;
   }).sort(function(a,b){ return new Date(b.paymentDate||0) - new Date(a.paymentDate||0); });
 
+  // Pending renewal requests for this vehicle+type (shown at top before approved history)
+  var pendingRenewals = RENEWAL_REQS.filter(function(r){
+    return (r.vehicle||'').toUpperCase() === vehicle.toUpperCase() && r.permitType === type && (r.status||'').toUpperCase() === 'PENDING';
+  });
+
   var today_dt = new Date(); today_dt.setHours(0,0,0,0);
   var alertDays = parseInt(SETTINGS.expiryAlertDays)||30;
   var warn_dt = new Date(today_dt); warn_dt.setDate(warn_dt.getDate()+alertDays);
 
-  // Summary strip
+  // Summary strip — use latest approved record for status
   var latest = records[0];
   var latestExp = latest ? new Date(latest.expiryDate||'') : null;
   var daysLeft = latestExp ? Math.ceil((latestExp - today_dt) / 86400000) : null;
@@ -8475,30 +8476,47 @@ function openPermitHistory(vehicle, type) {
     '<div><div class="statlbl">Vehicle</div><div style="font-weight:700;color:var(--ac)">' + esc(vehicle) + '</div></div>'
   + '<div><div class="statlbl">Permit Type</div><div style="font-weight:700;color:var(--ac)">' + esc(type) + '</div></div>'
   + '<div><div class="statlbl">Current Status</div><div style="margin-top:4px">' + statusHTML + '</div></div>'
-  + '<div><div class="statlbl">Total Renewals</div><div style="font-family:\'Outfit\',sans-serif;font-size:24px;font-weight:800;color:var(--ac)">' + records.length + '</div></div>';
+  + '<div><div class="statlbl">Total Renewals</div><div style="font-family:\'Outfit\',sans-serif;font-size:24px;font-weight:800;color:var(--ac)">' + (records.length + pendingRenewals.length) + '</div></div>';
 
   var tbody = document.getElementById('pmthist-tbody');
   var empty = document.getElementById('pmthist-empty');
 
-  if (!records.length) {
+  if (!records.length && !pendingRenewals.length) {
     tbody.innerHTML = '';
     empty.classList.remove('hidden');
   } else {
     empty.classList.add('hidden');
-    tbody.innerHTML = records.map(function(p, idx) {
+    var rows = '';
+
+    // Pending renewal requests at the top
+    pendingRenewals.forEach(function(r) {
+      rows += '<tr style="background:#fffbeb">'
+        + '<td style="font-weight:700;color:#92400e">—</td>'
+        + '<td style="color:#92400e">—</td>'
+        + '<td style="font-family:monospace;color:#92400e">TZS ' + fmt(r.estimatedCost||0) + '</td>'
+        + '<td>—</td>'
+        + '<td>—</td>'
+        + '<td><span class="sb sAM">⏳ Pending Approval</span></td>'
+        + '<td><small style="color:#92400e">Req: ' + esc(r.reqNo||r.id||'') + '</small></td>'
+        + '</tr>';
+    });
+
+    // Approved/historical permit records
+    records.forEach(function(p, idx) {
       var exp = new Date(p.expiryDate||''); exp.setHours(0,0,0,0);
-      var dl  = Math.ceil((exp - today_dt) / 86400000);
       var sb;
-      if (idx === 0) {
+      if (idx === 0 && !pendingRenewals.length) {
         if (exp < today_dt) sb = '<span class="sb sRD">🔴 Expired</span>';
         else if (exp <= warn_dt) sb = '<span class="sb sAM">🟡 Expiring</span>';
         else if (!p.documentUrl) sb = '<span class="sb sAM">📄 No Doc</span>';
         else sb = '<span class="sb sGR">✅ Current</span>';
+      } else if (idx === 0) {
+        sb = '<span class="sb sGR">✅ Current</span>';
       } else {
         sb = '<span class="sb sGY">📁 Historical</span>';
       }
-      return '<tr style="background:' + (idx===0?'#f0f9ff':'#fff') + '">'
-        + '<td style="' + (idx===0?'font-weight:700':'') + '">' + fmtDate(p.paymentDate) + '</td>'
+      rows += '<tr style="background:' + (idx===0&&!pendingRenewals.length?'#f0f9ff':'#fff') + '">'
+        + '<td style="' + (idx===0&&!pendingRenewals.length?'font-weight:700':'') + '">' + fmtDate(p.paymentDate) + '</td>'
         + '<td style="font-weight:600;color:' + (exp<today_dt?'#b91c1c':exp<=warn_dt?'#92400e':'#166534') + '">' + fmtDate(p.expiryDate) + '</td>'
         + '<td style="font-family:monospace;color:var(--ac)">TZS ' + fmt(p.amountPaid) + '</td>'
         + '<td>' + esc(p.receiptNo||'—') + '</td>'
@@ -8506,7 +8524,8 @@ function openPermitHistory(vehicle, type) {
         + '<td>' + sb + '</td>'
         + '<td><button class="actbtn e" onclick="closeModal(\'modal-permit-history\');editPermitRecord(\'' + p.id + '\')">Edit</button></td>'
         + '</tr>';
-    }).join('');
+    });
+    tbody.innerHTML = rows;
   }
   document.getElementById('modal-permit-history').classList.remove('hidden');
 }

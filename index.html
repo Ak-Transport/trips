@@ -3057,7 +3057,7 @@ function switchSettingsTab(n){
 // localStorage survives closing the browser, unlike sessionStorage,
 // so it's the wrong place to leave credentials indefinitely.
 
-var CACHE_VERSION = 2; // bump this whenever a dataset's structure changes
+var CACHE_VERSION = 3; // bumped: permit records now accumulate (no longer overwritten on renewal)
 var CACHE_PREFIX = 'ak_trips_cache_v';
 
 var CACHE_DATASETS = {
@@ -8261,14 +8261,10 @@ async function _quickRenewPermitConfirmed(vehicle, type, vType, existingPermit) 
     };
     var _rnRes=await callAPI('addRenewalReq', {record: record});if(_rnRes&&_rnRes.id)record.id=_rnRes.id;RENEWAL_REQS.push(record);
 
-    // 2. Clear permit data — update permit record to blank payment/expiry/doc
+    // 2. Mark existing permit as PENDING_RENEWAL but KEEP all payment data intact
+    //    so history is preserved. A new record is added when the doc is uploaded.
     if (existingPermit) {
-      existingPermit.paymentDate  = '';
-      existingPermit.expiryDate   = '';
-      existingPermit.amountPaid   = '';
-      existingPermit.receiptNo    = '';
-      existingPermit.documentUrl  = '';
-      existingPermit.status       = 'PENDING_RENEWAL';
+      existingPermit.status = 'PENDING_RENEWAL';
       await callAPI('updatePermit', {record: existingPermit});
     }
 
@@ -8522,7 +8518,9 @@ function openPermitHistory(vehicle, type) {
         + '<td>' + esc(p.receiptNo||'—') + '</td>'
         + '<td>' + (p.documentUrl ? '<a href="'+esc(p.documentUrl)+'" target="_blank" style="color:var(--t2);font-weight:600;font-size:12px;margin-right:8px" title="Preview" onclick="return previewDoc(this.href)">&#128065;</a><a href="'+esc(p.documentUrl)+'" target="_blank" onclick="return downloadDoc(this.href)" style="color:var(--hi);font-weight:600;font-size:12px">📥 Download</a>' : '<button class="actbtn" style="font-size:11px;color:#0071e3;border-color:#0071e3" onclick="openDocUpload(\''+p.id+'\',this)">⬆ Upload Doc</button>') + '</td>'
         + '<td>' + sb + '</td>'
-        + '<td><button class="actbtn e" onclick="closeModal(\'modal-permit-history\');editPermitRecord(\'' + p.id + '\')">Edit</button></td>'
+        + '<td style="white-space:nowrap"><button class="actbtn e" onclick="closeModal(\'modal-permit-history\');editPermitRecord(\'' + p.id + '\')">Edit</button>'
+        + ((!p.paymentDate && !p.expiryDate) ? ' <button class="actbtn" style="font-size:11px;color:#b91c1c;border-color:#b91c1c" onclick="deletePermitRecord(\''+p.id+'\',\''+esc(p.vehicle)+'\',\''+esc(p.permitType||'')+'\')">🗑 Delete</button>' : '')
+        + '</td>'
         + '</tr>';
     });
     tbody.innerHTML = rows;
@@ -8626,6 +8624,19 @@ function openAddPermitForVehicle(plate) {
         if (tSel) { tSel.value = _pendingPermitType; onPermitTypeChange(); }
       }
     }, 50);
+  }
+}
+
+// ── DELETE BLANK PERMIT RECORD ────────────────────────────────────
+async function deletePermitRecord(id, vehicle, type) {
+  if (!confirm('Delete this blank permit record for ' + vehicle + ' — ' + type + '?\n\nOnly empty records (no payment date, no expiry) can be deleted.')) return;
+  try {
+    await callAPI('deletePermit', {id: id});
+    PERMITS = PERMITS.filter(function(p){ return p.id !== id; });
+    toast('Blank permit record deleted ✓', 'ok');
+    openPermitHistory(vehicle, type);
+  } catch(e) {
+    toast('Error deleting record: ' + e.message, 'er');
   }
 }
 

@@ -8304,7 +8304,7 @@ function openUploadPermitDoc(vehicle, type, renewalId) {
     + '<input type="hidden" id="upd-type" value="'+esc(type)+'">'
     + '<input type="hidden" id="upd-renewal-id" value="'+esc(renewalId)+'">'
     + '<div class="formgroup"><label>Payment Date *</label><input type="date" id="upd-payment-date" value="'+today()+'" onchange="autoCalcUploadExpiry()"></div>'
-    + '<div class="formgroup"><label>Expiry Date *</label><input type="date" id="upd-expiry-date" onchange="calcUploadDays()"></div>'
+    + '<div class="formgroup"><label>Expiry Date</label><input type="date" id="upd-expiry-date" readonly style="background:#f0f4ff;color:var(--t2);cursor:not-allowed" onchange="calcUploadDays()"></div>'
     + '<div class="formgroup"><label>Days Valid</label><input type="text" id="upd-days" readonly></div>'
     + '<div class="formgroup"><label>Amount Paid (TZS)</label><input type="number" id="upd-amount" min="0" placeholder="0"></div>'
     + '<div class="formgroup full"><label>Receipt No</label><input type="text" id="upd-receipt" placeholder="Receipt number..."></div>'
@@ -8395,7 +8395,8 @@ async function savePermitUpload() {
   var receipt    = document.getElementById('upd-receipt').value;
   var notes      = document.getElementById('upd-notes').value;
 
-  if (!payDate || !expDate) { toast('Payment Date and Expiry Date are required','er'); return; }
+  if (!payDate) { toast('Payment Date is required','er'); return; }
+  if (!expDate) { toast('Expiry date could not be calculated — check permit type','er'); return; }
   if (!window._uploadFileData) { toast('Please select a permit document to upload','er'); return; }
 
   var btn = document.getElementById('upd-save-btn');

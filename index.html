@@ -3057,7 +3057,7 @@ function switchSettingsTab(n){
 // localStorage survives closing the browser, unlike sessionStorage,
 // so it's the wrong place to leave credentials indefinitely.
 
-var CACHE_VERSION = 3; // bumped: permit records now accumulate (no longer overwritten on renewal)
+var CACHE_VERSION = 4; // bumped: permit data now seeded from startup bundle without blocking eager loader
 var CACHE_PREFIX = 'ak_trips_cache_v';
 
 var CACHE_DATASETS = {
@@ -3512,7 +3512,13 @@ function _applyStartupBundle(bundle, opts){
     _saveDatasetCache('trips', TRIPS);
   }
 
-  // All permits now arrive in the startup bundle - seed PERMITS
+  // Seed PERMITS from bundle for instant paint — but do NOT set _loaded.permits=true
+  // so _loadPermitsEager() still runs its Firebase fetch and overwrites with fresh data.
+  if (bundle.permits && bundle.permits.length && !_loaded.permits) {
+    PERMITS = bundle.permits;
+    // Do not set _loaded.permits = true here — eager loader must still run
+  }
+
   // The backend isolates a failure in any one piece (settings /
   // workshop data / releases) from taking down the others - surface
   // those individually if present, same detail level as before.
@@ -8297,7 +8303,7 @@ function openUploadPermitDoc(vehicle, type, renewalId) {
     + '<input type="hidden" id="upd-vehicle" value="'+esc(vehicle)+'">'
     + '<input type="hidden" id="upd-type" value="'+esc(type)+'">'
     + '<input type="hidden" id="upd-renewal-id" value="'+esc(renewalId)+'">'
-    + '<div class="formgroup"><label>Payment Date *</label><input type="date" id="upd-payment-date" value="'+today()+'"></div>'
+    + '<div class="formgroup"><label>Payment Date *</label><input type="date" id="upd-payment-date" value="'+today()+'" onchange="autoCalcUploadExpiry()"></div>'
     + '<div class="formgroup"><label>Expiry Date *</label><input type="date" id="upd-expiry-date" onchange="calcUploadDays()"></div>'
     + '<div class="formgroup"><label>Days Valid</label><input type="text" id="upd-days" readonly></div>'
     + '<div class="formgroup"><label>Amount Paid (TZS)</label><input type="number" id="upd-amount" min="0" placeholder="0"></div>'
@@ -8319,16 +8325,38 @@ function openUploadPermitDoc(vehicle, type, renewalId) {
     + '</div></div>';
   document.body.appendChild(modal);
   window._uploadFileData = null;
+  // Auto-calculate expiry immediately based on today's payment date + permit type
+  setTimeout(autoCalcUploadExpiry, 50);
 }
 
 function calcUploadDays() {
   var expDate = document.getElementById('upd-expiry-date').value;
-  var payDate = document.getElementById('upd-payment-date').value;
   if (!expDate) return;
   var today_dt = new Date(); today_dt.setHours(0,0,0,0);
   var exp = new Date(expDate);
   var days = Math.ceil((exp - today_dt) / 86400000);
   document.getElementById('upd-days').value = days + ' days from today';
+}
+
+function autoCalcUploadExpiry() {
+  var PERMIT_DURATIONS_MONTHS = {
+    Insurance: 12, LATRA: 12, C28: 12, Calibration: 12,
+    ZABS: 6, 'COMESA Horse': 6, 'COMESA Trailer': 6,
+    'Carbon Tax': 3, 'Permit Horse': 3, 'Permit Trailer': 3
+  };
+  var payDate = document.getElementById('upd-payment-date').value;
+  var type    = document.getElementById('upd-type').value;
+  if (!payDate || !type) return;
+  var months = PERMIT_DURATIONS_MONTHS[type];
+  if (!months) return;
+  var d = new Date(payDate);
+  d.setMonth(d.getMonth() + months);
+  // Format as YYYY-MM-DD for the date input
+  var yyyy = d.getFullYear();
+  var mm   = String(d.getMonth() + 1).padStart(2, '0');
+  var dd   = String(d.getDate()).padStart(2, '0');
+  document.getElementById('upd-expiry-date').value = yyyy + '-' + mm + '-' + dd;
+  calcUploadDays();
 }
 
 function handleUploadFileSelect(input) {

@@ -427,9 +427,14 @@ td,td *{font-size:13px!important;font-family:'Inter',sans-serif!important}
       <div id="tablearea">
         <table id="releases-table"><thead><tr>
           <th style="width:32px"><input type="checkbox" id="rel-check-all" onchange="toggleAllReleaseChecks(this)" style="cursor:pointer"></th>
-          <th>Release No</th><th>Date</th><th>Customer</th><th>Destination</th>
-          <th>Product</th><th>Loading Point</th>
-          <th>Trucks</th><th>Assigned</th><th>Remaining</th><th>Assignment Status</th><th>Delivery Status</th><th>Document</th><th>Actions</th>
+          <th class="sortable" data-table="rel" data-col="releaseNo" onclick="_setSort('rel','releaseNo',renderReleases)">Release No<span class="sort-arrow">⇅</span></th>
+          <th class="sortable" data-table="rel" data-col="releaseDate" onclick="_setSort('rel','releaseDate',renderReleases)">Date<span class="sort-arrow">⇅</span></th>
+          <th class="sortable" data-table="rel" data-col="customer" onclick="_setSort('rel','customer',renderReleases)">Customer<span class="sort-arrow">⇅</span></th>
+          <th class="sortable" data-table="rel" data-col="destination" onclick="_setSort('rel','destination',renderReleases)">Destination<span class="sort-arrow">⇅</span></th>
+          <th class="sortable" data-table="rel" data-col="product" onclick="_setSort('rel','product',renderReleases)">Product<span class="sort-arrow">⇅</span></th>
+          <th class="sortable" data-table="rel" data-col="loadingPoint" onclick="_setSort('rel','loadingPoint',renderReleases)">Loading Point<span class="sort-arrow">⇅</span></th>
+          <th class="sortable" data-table="rel" data-col="noOfTrucks" onclick="_setSort('rel','noOfTrucks',renderReleases)">Trucks<span class="sort-arrow">⇅</span></th>
+          <th>Assigned</th><th>Remaining</th><th>Assignment Status</th><th>Delivery Status</th><th>Document</th><th>Actions</th>
         </tr></thead><tbody id="releases-tbody"></tbody></table>
         <div class="emptystate hidden" id="releases-empty"><div style="font-size:48px;margin-bottom:12px">&#128230;</div><h3>No Releases Yet</h3><p>Create your first release to get started</p></div>
       </div>
@@ -772,11 +777,22 @@ td,td *{font-size:13px!important;font-family:'Inter',sans-serif!important}
         <table>
           <thead><tr>
             <th style="width:32px"><input type="checkbox" id="trip-check-all" onchange="toggleAllTripChecks(this)"></th>
-            <th>Trip No</th><th>Release</th><th>Customer</th><th>Horse</th><th>Trailer</th>
-            <th>Driver</th><th>Destination</th><th>Product</th><th>Loading Pt</th>
-            <th>Loading Date</th><th>Offloading Date</th>
-            <th>Vol Loaded</th><th>Vol Offloaded</th><th>Excess Loss</th>
-            <th>Status</th><th>Documents</th><th>Actions</th>
+            <th class="sortable" data-table="trips" data-col="tripNo" onclick="_setSort('trips','tripNo',renderTrips)">Trip No<span class="sort-arrow">⇅</span></th>
+            <th class="sortable" data-table="trips" data-col="releaseNo" onclick="_setSort('trips','releaseNo',renderTrips)">Release<span class="sort-arrow">⇅</span></th>
+            <th class="sortable" data-table="trips" data-col="customer" onclick="_setSort('trips','customer',renderTrips)">Customer<span class="sort-arrow">⇅</span></th>
+            <th class="sortable" data-table="trips" data-col="horse" onclick="_setSort('trips','horse',renderTrips)">Horse<span class="sort-arrow">⇅</span></th>
+            <th class="sortable" data-table="trips" data-col="trailer" onclick="_setSort('trips','trailer',renderTrips)">Trailer<span class="sort-arrow">⇅</span></th>
+            <th class="sortable" data-table="trips" data-col="driver" onclick="_setSort('trips','driver',renderTrips)">Driver<span class="sort-arrow">⇅</span></th>
+            <th class="sortable" data-table="trips" data-col="destination" onclick="_setSort('trips','destination',renderTrips)">Destination<span class="sort-arrow">⇅</span></th>
+            <th class="sortable" data-table="trips" data-col="product" onclick="_setSort('trips','product',renderTrips)">Product<span class="sort-arrow">⇅</span></th>
+            <th class="sortable" data-table="trips" data-col="loadingPoint" onclick="_setSort('trips','loadingPoint',renderTrips)">Loading Pt<span class="sort-arrow">⇅</span></th>
+            <th class="sortable" data-table="trips" data-col="loadingDate" onclick="_setSort('trips','loadingDate',renderTrips)">Loading Date<span class="sort-arrow">⇅</span></th>
+            <th class="sortable" data-table="trips" data-col="offloadingDate" onclick="_setSort('trips','offloadingDate',renderTrips)">Offloading Date<span class="sort-arrow">⇅</span></th>
+            <th class="sortable" data-table="trips" data-col="loadedQty" onclick="_setSort('trips','loadedQty',renderTrips)">Vol Loaded<span class="sort-arrow">⇅</span></th>
+            <th class="sortable" data-table="trips" data-col="offloadedQty" onclick="_setSort('trips','offloadedQty',renderTrips)">Vol Offloaded<span class="sort-arrow">⇅</span></th>
+            <th class="sortable" data-table="trips" data-col="excessLoss" onclick="_setSort('trips','excessLoss',renderTrips)">Excess Loss<span class="sort-arrow">⇅</span></th>
+            <th class="sortable" data-table="trips" data-col="status" onclick="_setSort('trips','status',renderTrips)">Status<span class="sort-arrow">⇅</span></th>
+            <th>Documents</th><th>Actions</th>
           </tr></thead>
           <tbody id="trips-tbody"></tbody>
         </table>
@@ -1295,17 +1311,17 @@ td,td *{font-size:13px!important;font-family:'Inter',sans-serif!important}
           <thead>
             <tr>
               <th style="width:32px"><input type="checkbox" id="pr-check-all" onchange="toggleAllPrChecks(this)"></th>
-              <th>Req No</th>
-              <th>Type</th>
-              <th>Release</th>
-              <th>Truck</th>
-              <th>Client</th>
-              <th>Destination</th>
-              <th>Description</th>
-              <th>Amount</th>
-              <th>Requested By</th>
-              <th>Date</th>
-              <th>Status</th>
+              <th class="sortable" data-table="rf" data-col="reqNo" onclick="_setSort('rf','reqNo',renderTripRequests)">Req No<span class="sort-arrow">⇅</span></th>
+              <th class="sortable" data-table="rf" data-col="requestType" onclick="_setSort('rf','requestType',renderTripRequests)">Type<span class="sort-arrow">⇅</span></th>
+              <th class="sortable" data-table="rf" data-col="releaseNo" onclick="_setSort('rf','releaseNo',renderTripRequests)">Release<span class="sort-arrow">⇅</span></th>
+              <th class="sortable" data-table="rf" data-col="horse" onclick="_setSort('rf','horse',renderTripRequests)">Truck<span class="sort-arrow">⇅</span></th>
+              <th class="sortable" data-table="rf" data-col="client" onclick="_setSort('rf','client',renderTripRequests)">Client<span class="sort-arrow">⇅</span></th>
+              <th class="sortable" data-table="rf" data-col="destination" onclick="_setSort('rf','destination',renderTripRequests)">Destination<span class="sort-arrow">⇅</span></th>
+              <th class="sortable" data-table="rf" data-col="description" onclick="_setSort('rf','description',renderTripRequests)">Description<span class="sort-arrow">⇅</span></th>
+              <th class="sortable" data-table="rf" data-col="amount" onclick="_setSort('rf','amount',renderTripRequests)">Amount<span class="sort-arrow">⇅</span></th>
+              <th class="sortable" data-table="rf" data-col="requestedBy" onclick="_setSort('rf','requestedBy',renderTripRequests)">Requested By<span class="sort-arrow">⇅</span></th>
+              <th class="sortable" data-table="rf" data-col="requestedAt" onclick="_setSort('rf','requestedAt',renderTripRequests)">Date<span class="sort-arrow">⇅</span></th>
+              <th class="sortable" data-table="rf" data-col="status" onclick="_setSort('rf','status',renderTripRequests)">Status<span class="sort-arrow">⇅</span></th>
               <th>Actions</th>
             </tr>
           </thead>
@@ -3719,8 +3735,18 @@ async function loadAppData(){
     // Merge the older records in behind what Tier 1 already loaded -
     // everything ends up fully available, exactly as before, it just
     // arrives in two waves instead of one big upfront wait.
-    if (rs2[4].status==='fulfilled') RELEASES = RELEASES.concat(rs2[4].value.records||[]);
-    if (rs2[5].status==='fulfilled') TRIPS    = TRIPS.concat(rs2[5].value.records||[]);
+    // Deduplicate by id so overlapping date ranges don't cause duplicate rows.
+    if (rs2[4].status==='fulfilled') {
+      var _existRelIds = new Set(RELEASES.map(function(r){ return r.id; }));
+      RELEASES = RELEASES.concat((rs2[4].value.records||[]).filter(function(r){ return !_existRelIds.has(r.id); }));
+    }
+    if (rs2[5].status==='fulfilled') {
+      var _existTripIds = new Set(TRIPS.map(function(t){ return t.id; }));
+      TRIPS = TRIPS.concat((rs2[5].value.records||[]).filter(function(t){ return !_existTripIds.has(t.id); }));
+    }
+    // Final dedup pass — belt-and-suspenders for any other overlapping records
+    RELEASES = RELEASES.filter(function(r,i,a){ return a.findIndex(function(x){ return x.id===r.id; })===i; });
+    TRIPS    = TRIPS.filter(function(t,i,a){ return a.findIndex(function(x){ return x.id===t.id; })===i; });
     // Save Trips to its own cache key now that Tier 2 has merged both
     // recent + older records into TRIPS - this is the first point in
     // any session where the dataset is complete enough to be worth
@@ -4464,7 +4490,15 @@ function renderTrips(){
       if(dateTo   && d > dateTo)   return false;
     }
     return true;
-  }).sort(function(a,b){ return new Date(b.loadingDate||0)-new Date(a.loadingDate||0); });
+  });
+  if (_sortState['trips'] && _sortState['trips'].col) {
+    data = _applySortToData(data, 'trips', function(t, col) {
+      if (['loadedQty','offloadedQty','excessLoss'].includes(col)) return parseFloat(t[col])||0;
+      return t[col] != null ? String(t[col]) : '';
+    });
+  } else {
+    data = data.slice().sort(function(a,b){ return new Date(b.loadingDate||0)-new Date(a.loadingDate||0); });
+  }
 
   var tbody = document.getElementById('trips-tbody');
   var empty = document.getElementById('trips-empty');
@@ -13013,7 +13047,15 @@ function renderTripRequests() {
           || (r.releaseNo||'').toLowerCase().includes(q);
     }
     return true;
-  }).sort(function(a,b){ return new Date(b.requestedAt||0)-new Date(a.requestedAt||0); });
+  });
+  if (_sortState['rf'] && _sortState['rf'].col) {
+    data = _applySortToData(data, 'rf', function(r, col) {
+      if (col === 'amount') return parseFloat(r.amountTZS||r.amountUSD)||0;
+      return r[col] != null ? String(r[col]) : '';
+    });
+  } else {
+    data = data.slice().sort(function(a,b){ return new Date(b.requestedAt||0)-new Date(a.requestedAt||0); });
+  }
 
   var tbody = document.getElementById('fuel-tbody');
   var empty = document.getElementById('fuel-empty');
@@ -14458,6 +14500,10 @@ window.renderReleases = function() {
       if(dateTo   && d > dateTo)   return false;
     }
     return true;
+  });
+  data = _applySortToData(data, 'rel', function(r, col) {
+    if (col === 'noOfTrucks') return parseInt(r.noOfTrucks)||0;
+    return r[col] != null ? String(r[col]) : '';
   });
   var tbody=document.getElementById('releases-tbody');
   var empty=document.getElementById('releases-empty');
@@ -17362,6 +17408,51 @@ function applyApprovalButtonVisibility() {
 });
 
 console.log('Phase 17 — Granular Approve permission loaded ✓');
+</script>
+<script>
+// ── TABLE SORT ENGINE ────────────────────────────────────────────────
+var _sortState = {};
+function _sortVal(v) {
+  if (v == null || v === '' || v === '—') return '';
+  var dmy = String(v).match(/^(\d{2})-([A-Za-z]{3})-(\d{2})$/);
+  if (dmy) { var mo={Jan:'01',Feb:'02',Mar:'03',Apr:'04',May:'05',Jun:'06',Jul:'07',Aug:'08',Sep:'09',Oct:'10',Nov:'11',Dec:'12'}; return '20'+dmy[3]+'-'+(mo[dmy[2]]||'00')+'-'+dmy[1]; }
+  if (/^\d{4}-\d{2}-\d{2}$/.test(String(v))) return String(v);
+  var n = parseFloat(String(v).replace(/,/g,''));
+  if (!isNaN(n)) return n;
+  return String(v).toLowerCase();
+}
+function _applySortToData(data, tableKey, colMap) {
+  var st = _sortState[tableKey];
+  if (!st || !st.col) return data;
+  return data.slice().sort(function(a,b){
+    var av=_sortVal(colMap(a,st.col)), bv=_sortVal(colMap(b,st.col));
+    var res=(av<bv)?-1:(av>bv)?1:0;
+    return st.dir==='desc'?-res:res;
+  });
+}
+function _setSort(tableKey, col, renderFn) {
+  var st = _sortState[tableKey];
+  _sortState[tableKey] = { col: col, dir: (st&&st.col===col&&st.dir==='asc')?'desc':'asc' };
+  _updateSortHeaders(tableKey);
+  renderFn();
+}
+function _updateSortHeaders(tableKey) {
+  var st = _sortState[tableKey];
+  document.querySelectorAll('th.sortable[data-table="'+tableKey+'"]').forEach(function(th){
+    th.classList.remove('sort-asc','sort-desc');
+    var arrow=th.querySelector('.sort-arrow');
+    if(arrow) arrow.textContent='⇅';
+    if(st && th.getAttribute('data-col')===st.col){
+      th.classList.add('sort-'+st.dir);
+      if(arrow) arrow.textContent=st.dir==='asc'?'▲':'▼';
+    }
+  });
+}
+(function(){
+  var s=document.createElement('style');
+  s.textContent='th.sortable{cursor:pointer;user-select:none}th.sortable:hover{background:rgba(10,45,110,.1)!important}th.sortable .sort-arrow{display:inline-block;margin-left:4px;opacity:.3;font-size:10px;vertical-align:middle}th.sortable.sort-asc .sort-arrow,th.sortable.sort-desc .sort-arrow{opacity:1;color:#4f8ef7}';
+  document.head.appendChild(s);
+})();
 </script>
 </body>
 </html>

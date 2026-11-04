@@ -2894,7 +2894,7 @@ var _viewData = {
   // Note: ledger needed for FUEL_LOSS/DEDUCTIONS, refdata for opening balances
   permits:     ['permits','renewals'],
   driveraccts: ['trips','ledger','refdata'],
-  shortage:    ['trips','ledger'],
+  shortage:    ['trips','ledger','refdata'],
   deductions:  ['ledger'],
   reqforms:    ['trips','fuelreq'],
   fuel:        ['trips','fuelreq'],
@@ -3864,7 +3864,14 @@ function updateBadges(){
     return(t.status||'').toUpperCase()==='COMPLETED'&&parseFloat(t.excessLoss||0)>0
         &&!FUEL_LOSS.some(function(f){return f.tripId===t.id||f.tripNo===t.tripNo;});
   }).length;
-  set('badge-shortage', shortageOut+autoShort);
+  // Add unpaid opening balances to shortage badge count
+  var obShort = (typeof DRIVER_OPENING_BALANCES!=='undefined') ? DRIVER_OPENING_BALANCES.filter(function(ob){
+    if(!(parseFloat(ob.openingBalanceTZS||0)>0)) return false;
+    var obKey='ob-'+ob.id;
+    var paid=SHORTAGE_PMTS.filter(function(p){return p.fuelLossId===obKey&&(p.status||'').toUpperCase()==='APPROVED';}).reduce(function(s,p){return s+parseFloat(p.amountTZS||0);},0);
+    return Math.max(0,parseFloat(ob.openingBalanceTZS)-paid)>0;
+  }).length : 0;
+  set('badge-shortage', shortageOut+autoShort+obShort);
 
   // Deductions
   var dedOut=0;
@@ -6350,8 +6357,12 @@ function renderDriverSummary() {
     var shortOwed=shortRecs.reduce(function(s,f){return s+parseFloat(f.driverOwsTZS||0);},0)
                  +autoRecs.reduce(function(s,t){return s+Math.round(parseFloat(t.excessLoss||0)*parseFloat(t.ratePerLitre||SETTINGS.fuelLossRate||SETTINGS.fuelPrice||3200));},0)
                  +openingBal;
+    // Count shortage payments (trip-based) + opening balance payments
+    var obFuelLossId = openingBalRec ? 'ob-' + openingBalRec.id : null;
     var shortPaid=SHORTAGE_PMTS.filter(function(p){
-      return shortRecs.some(function(f){return f.id===p.fuelLossId;})&&(p.status||'').toUpperCase()==='APPROVED';
+      var isTripPmt = shortRecs.some(function(f){return f.id===p.fuelLossId;});
+      var isOBPmt   = obFuelLossId && p.fuelLossId === obFuelLossId;
+      return (isTripPmt || isOBPmt) && (p.status||'').toUpperCase()==='APPROVED';
     }).reduce(function(s,p){return s+parseFloat(p.amountTZS||0);},0);
     var dedRecs=typeof DEDUCTIONS!=='undefined'?DEDUCTIONS.filter(function(d){return d.driver===driver;}):[];
     var dedOwed=dedRecs.reduce(function(s,d){return s+parseFloat(d.amountTZS||0);},0);
@@ -6519,6 +6530,13 @@ function openDriverStatement(driver) {
   SHORTAGE_PMTS.filter(function(p){return shortRecs.some(function(f){return f.id===p.fuelLossId;});}).forEach(function(p){
     var f=shortRecs.find(function(x){return x.id===p.fuelLossId;}); pmtRows.push({date:p.receivedDate||'',ref:p.id.substring(0,8).toUpperCase(),relTo:f?f.tripNo||'--':'--',method:p.method||'Cash',status:p.status||'PENDING',amount:parseFloat(p.amountTZS||0)});
   });
+  // Also include opening balance payments for this driver
+  if(obRec){
+    var obKey='ob-'+obRec.id;
+    SHORTAGE_PMTS.filter(function(p){return p.fuelLossId===obKey;}).forEach(function(p){
+      pmtRows.push({date:p.receivedDate||'',ref:p.id.substring(0,8).toUpperCase(),relTo:'Opening Bal',method:p.method||'Cash',status:p.status||'PENDING',amount:parseFloat(p.amountTZS||0)});
+    });
+  }
   if(typeof DEDUCTION_PMTS!=='undefined') DEDUCTION_PMTS.filter(function(p){return dedRecs.some(function(d){return d.id===p.deductionId;});}).forEach(function(p){
     var d=dedRecs.find(function(x){return x.id===p.deductionId;}); pmtRows.push({date:p.receivedDate||'',ref:p.id.substring(0,8).toUpperCase(),relTo:d?d.refNo||'--':'--',method:p.method||'Cash',status:p.status||'PENDING',amount:parseFloat(p.amountTZS||0)});
   });
@@ -9986,10 +10004,42 @@ window.renderShortage = function() {
     };
   });
 
-  // Merge FUEL_LOSS + auto trips
-  var combined = FUEL_LOSS.concat(autoTrips);
+  // Opening balance rows — one per driver with an opening balance > 0 (always shown first)
+  var obRows = [];
+  if (typeof DRIVER_OPENING_BALANCES !== 'undefined') {
+    DRIVER_OPENING_BALANCES.forEach(function(ob){
+      if (!ob.driver || !(parseFloat(ob.openingBalanceTZS||0) > 0)) return;
+      obRows.push({
+        id: 'ob-' + ob.id,
+        tripNo: '—',
+        driver: ob.driver,
+        horse: '—',
+        customer: '—',
+        destination: '—',
+        loadedQty: 0,
+        offloadedQty: 0,
+        excessLoss: 0,
+        driverOwsTZS: parseFloat(ob.openingBalanceTZS),
+        _isOB: true,
+        _obId: ob.id,
+        _obDate: ob.asOfDate || ''
+      });
+    });
+  }
+
+  // Merge: opening balance rows first, then FUEL_LOSS + auto trips
+  var combined = obRows.concat(FUEL_LOSS).concat(autoTrips);
 
   var data = combined.filter(function(f){
+    // OB rows: only filter by driver field
+    if (f._isOB) {
+      for (var i=0; i<filters.length; i++) {
+        var fi = filters[i];
+        if (!fi.field || !fi.value) continue;
+        if (fi.field === 'driver' && !(f.driver||'').toLowerCase().includes(fi.value)) return false;
+      }
+      return true;
+    }
     for (var i=0; i<filters.length; i++) {
       var fi = filters[i];
       if (!fi.field || !fi.value) continue;
@@ -10028,9 +10078,29 @@ window.renderShortage = function() {
 
   tbody.innerHTML = data.map(function(f){
     var pmts = SHORTAGE_PMTS.filter(function(p){ return p.fuelLossId === f.id; });
+    var isAuto = !!f._auto;
+    var isOB   = !!f._isOB;
+
+    if (isOB) {
+      // Opening Balance row — purple-tinted
+      return '<tr style="background:#f5f3ff">'
+        + '<td colspan="2"><span style="font-size:10px;font-weight:700;padding:2px 8px;border-radius:8px;background:#ede9fe;color:#6d28d9;margin-right:6px">OPENING BALANCE</span></td>'
+        + '<td style="font-size:11px;color:var(--t3)">As of ' + esc(f._obDate ? fmtDate(f._obDate) : '—') + '</td>'
+        + '<td style="font-weight:700;color:var(--ac)">' + esc(f.driver) + '</td>'
+        + '<td colspan="4" style="color:var(--t3);font-size:11px">Carried forward balance</td>'
+        + '<td style="font-family:monospace;color:#b91c1c">TZS ' + fmt(f._owed) + '</td>'
+        + '<td style="font-family:monospace;color:#166534">TZS ' + fmt(f._paid) + '</td>'
+        + '<td style="font-family:monospace;font-weight:700;color:' + (f._bal>0?'#b91c1c':'#166534') + '">TZS ' + fmt(f._bal) + '</td>'
+        + '<td>' + shortageStatusBadge(f._stt, pmts.filter(function(p){return (p.status||'').toUpperCase()==='PENDING';}).length) + '</td>'
+        + '<td class="td-actions">'
+        + (f._stt !== 'PAID' ? '<button class="actbtn e" onclick="openOBPayment(\''+f._obId+'\',\''+esc(f.driver)+'\','+f._owed+','+f._paid+')">+ Payment</button> ' : '')
+        + '<button class="actbtn v" onclick="openOBDetail(\''+f._obId+'\',\''+esc(f.driver)+'\')">History('+pmts.length+')</button>'
+        + '</td>'
+        + '</tr>';
+    }
+
     var customer    = f.customer    || (function(){ var t=TRIPS.find(function(x){return x.id===f.tripId||x.tripNo===f.tripNo;}); var rel=t?RELEASES.find(function(r){return r.releaseNo===t.releaseNo;}):null; return rel?rel.customer||'—':t?t.customer||'—':'—'; })();
     var destination = f.destination || (function(){ var t=TRIPS.find(function(x){return x.id===f.tripId||x.tripNo===f.tripNo;}); return t?t.destination||'—':'—'; })();
-    var isAuto = !!f._auto;
     return '<tr' + (isAuto?' style="background:#fffbeb"':'') + '>'
       + '<td><b>' + esc(f.tripNo||'—') + '</b>' + (isAuto?'<span style="font-size:9px;color:#92400e;margin-left:4px">pending save</span>':'') + '</td>'
       + '<td style="font-size:11px">' + esc(customer) + '</td>'
@@ -10246,6 +10316,176 @@ async function saveShortagePayment() {
     updateBadges(); window.renderShortage();
   } catch(e) { toast('Error: ' + e.message, 'er'); }
   finally { btn.disabled = false; btn.innerHTML = '&#128190; Record Payment'; }
+}
+
+// ── OPENING BALANCE PAYMENT ──────────────────────────────────────
+function openOBPayment(obId, driver, owed, paid) {
+  var bal = Math.max(0, owed - paid);
+  var existing = document.getElementById('modal-ob-pmt');
+  if (existing) existing.remove();
+
+  var modal = document.createElement('div');
+  modal.id = 'modal-ob-pmt';
+  modal.className = 'overlay';
+  modal.innerHTML = '<div class="modal" style="max-width:680px;max-height:88vh;display:flex;flex-direction:column">'
+    + '<div class="modalhead"><div class="modaltitle">&#128176; Record Opening Balance Payment</div><button class="modalclose" onclick="closeModal(\'modal-ob-pmt\')">&#10005;</button></div>'
+    + '<div class="modalbody">'
+    + '<div style="background:#f5f3ff;border:1.5px solid #c4b5fd;border-radius:10px;padding:12px 16px;margin-bottom:18px;display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px">'
+    + '<div><div class="statlbl">Driver</div><div style="font-weight:700;color:var(--ac)">' + esc(driver) + '</div></div>'
+    + '<div><div class="statlbl">Opening Balance</div><div style="font-weight:700;color:#b91c1c">TZS ' + fmt(owed) + '</div></div>'
+    + '<div><div class="statlbl">Balance Remaining</div><div style="font-weight:700;color:#b91c1c">TZS ' + fmt(bal) + '</div></div>'
+    + '</div>'
+    + '<div class="formgrid">'
+    + '<input type="hidden" id="obpm-obid" value="' + esc(obId) + '">'
+    + '<input type="hidden" id="obpm-driver" value="' + esc(driver) + '">'
+    + '<div class="formgroup"><label>Amount Paying (TZS) *</label><input type="number" id="obpm-amount" min="0" max="' + bal + '" placeholder="' + bal + '" value="' + bal + '"></div>'
+    + '<div class="formgroup"><label>Payment Date *</label><input type="date" id="obpm-date" value="' + today() + '"></div>'
+    + '<div class="formgroup"><label>Received By *</label><input type="text" id="obpm-recby" value="' + (CURRENT_USER?esc(CURRENT_USER.name||CURRENT_USER.username||''):'') + '" style="text-transform:uppercase"></div>'
+    + '<div class="formgroup"><label>Payment Method</label><select id="obpm-method" onchange="_onMethodChangeToggleLetter(this,\'obpm\')"><option>Cash</option><option>Mobile Money</option><option>Bank Transfer</option><option>Salary Deduct</option><option>Mileage Deduct</option></select></div>'
+    + _letterFieldHtml('obpm')
+    + '<div class="formgroup full"><label>Notes</label><textarea id="obpm-notes" placeholder="Notes..."></textarea></div>'
+    + '</div></div>'
+    + '<div class="modalfoot"><button class="btn bg" onclick="closeModal(\'modal-ob-pmt\')">Cancel</button><button class="btn bp" id="obpm-save-btn" onclick="saveOBPayment()">&#128190; Record Payment</button></div>'
+    + '</div>';
+  document.body.appendChild(modal);
+  window._letterFileData_obpm = null;
+}
+
+async function saveOBPayment() {
+  var obId   = document.getElementById('obpm-obid').value;
+  var driver = document.getElementById('obpm-driver').value;
+  var amount = parseFloat(document.getElementById('obpm-amount').value) || 0;
+  var date   = document.getElementById('obpm-date').value;
+  var recby  = document.getElementById('obpm-recby').value.trim();
+  var method = document.getElementById('obpm-method').value;
+  if (!amount || !date || !recby) { toast('Fill required fields', 'er'); return; }
+  if (_isDeductMethod(method) && !window._letterFileData_obpm) {
+    toast('Driver agreement letter is required for '+method, 'er'); return;
+  }
+  var btn = document.getElementById('obpm-save-btn'); btn.disabled = true; btn.textContent = 'Saving...';
+  try {
+    var letterUrl = await _uploadLetterIfNeeded('obpm', 'ob-'+obId);
+    // fuelLossId uses 'ob-<obId>' so SHORTAGE_PMTS payments for opening balance
+    // are automatically counted in renderDriverSummary and renderShortage.
+    var record = {
+      id: uuid(), fuelLossId: 'ob-' + obId,
+      tripId: '', tripNo: '',
+      driver: driver,
+      amountTZS: amount, receivedBy: recby.toUpperCase(),
+      receivedDate: date, method: method, letterUrl: letterUrl,
+      status: 'PENDING',
+      notes: document.getElementById('obpm-notes').value,
+      _isOBPayment: true
+    };
+    await callAPI('addShortagePayment', {record: record});
+    SHORTAGE_PMTS.push(record);
+    toast('Payment submitted — awaiting approval ✓', 'ok');
+    closeModal('modal-ob-pmt');
+    updateBadges(); window.renderShortage();
+  } catch(e) { toast('Error: ' + e.message, 'er'); }
+  finally { btn.disabled = false; btn.innerHTML = '&#128190; Record Payment'; }
+}
+
+// ── OPENING BALANCE PAYMENT HISTORY ──────────────────────────────
+function openOBDetail(obId, driver) {
+  var obKey = 'ob-' + obId;
+  var pmts  = SHORTAGE_PMTS.filter(function(p){ return p.fuelLossId === obKey; })
+                .sort(function(a,b){ return new Date(b.receivedDate||0)-new Date(a.receivedDate||0); });
+  var ob = typeof DRIVER_OPENING_BALANCES !== 'undefined'
+    ? DRIVER_OPENING_BALANCES.find(function(o){ return o.id === obId; }) : null;
+  var owed = ob ? parseFloat(ob.openingBalanceTZS||0) : 0;
+  var paid = SHORTAGE_PMTS
+    .filter(function(p){ return p.fuelLossId===obKey && (p.status||'').toUpperCase()==='APPROVED'; })
+    .reduce(function(sum,p){ return sum+parseFloat(p.amountTZS||0); }, 0);
+  var bal  = Math.max(0, owed - paid);
+
+  var existing = document.getElementById('modal-ob-detail');
+  if (existing) existing.remove();
+
+  var rows = pmts.map(function(p){
+    return '<tr>'
+      + '<td>' + fmtDate(p.receivedDate) + '</td>'
+      + '<td style="font-weight:700;color:#166534">TZS ' + fmt(p.amountTZS) + '</td>'
+      + '<td>' + esc(p.method||'Cash') + '</td>'
+      + '<td>' + esc(p.receivedBy||'—') + '</td>'
+      + '<td>' + _letterViewLink(p.letterUrl) + '</td>'
+      + '<td>' + txnStatusBadge(p.status) + '</td>'
+      + '<td>'
+      + (p.status === 'PENDING' ? '<button class="actbtn e" onclick="approveOBPayment(\''+p.id+'\',\''+obId+'\',this)">Approve</button> <button class="actbtn d" onclick="rejectOBPayment(\''+p.id+'\',\''+obId+'\',this)">Reject</button>' : '')
+      + '</td>'
+      + '</tr>';
+  }).join('') || '<tr><td colspan="7" style="text-align:center;color:var(--t3)">No payments recorded yet</td></tr>';
+
+  var modal = document.createElement('div');
+  modal.id = 'modal-ob-detail';
+  modal.className = 'overlay';
+  modal.innerHTML = '<div class="modal" style="max-width:920px;max-height:88vh;display:flex;flex-direction:column">'
+    + '<div class="modalhead"><div class="modaltitle">&#128176; Opening Balance — ' + esc(driver) + '</div><button class="modalclose" onclick="closeModal(\'modal-ob-detail\')">&#10005;</button></div>'
+    + '<div class="modalbody">'
+    + '<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:20px">'
+    + '<div class="statcard"><div class="statlbl">Opening Balance</div><div style="font-family:\'Outfit\',sans-serif;font-size:20px;font-weight:800;color:#6d28d9">TZS ' + fmt(owed) + '</div></div>'
+    + '<div class="statcard"><div class="statlbl">Total Paid</div><div style="font-family:\'Outfit\',sans-serif;font-size:20px;font-weight:800;color:#166534">TZS ' + fmt(paid) + '</div></div>'
+    + '<div class="statcard"><div class="statlbl">Balance</div><div style="font-family:\'Outfit\',sans-serif;font-size:20px;font-weight:800;color:' + (bal>0?'#b91c1c':'#166534') + '">TZS ' + fmt(bal) + '</div></div>'
+    + '</div>'
+    + '<div style="font-size:11px;font-weight:700;color:var(--ac);text-transform:uppercase;letter-spacing:.08em;margin-bottom:10px">Payment History</div>'
+    + '<table><thead><tr><th>Date</th><th>Amount</th><th>Method</th><th>Received By</th><th>Letter</th><th>Status</th><th>Action</th></tr></thead>'
+    + '<tbody>' + rows + '</tbody></table>'
+    + '</div>'
+    + '<div class="modalfoot">'
+    + (bal > 0 ? '<button class="btn bp" onclick="closeModal(\'modal-ob-detail\');openOBPayment(\''+obId+'\',\''+esc(driver)+'\','+owed+','+paid+')">+ Record Payment</button>' : '')
+    + '<button class="btn bg" onclick="closeModal(\'modal-ob-detail\')">Close</button>'
+    + '</div></div>';
+  document.body.appendChild(modal);
+}
+
+async function approveOBPayment(paymentId, obId, btnEl) {
+  var obKey = 'ob-' + obId;
+  var p = SHORTAGE_PMTS.find(function(x){ return x.id === paymentId; });
+  if (!p) return;
+  if (btnEl) { if (btnEl.disabled) return; btnEl.disabled = true; btnEl.textContent = 'Approving...'; }
+  var _prev = {status:p.status, approvedBy:p.approvedBy, approvedAt:p.approvedAt};
+  p.status = 'APPROVED';
+  p.approvedBy = CURRENT_USER ? (CURRENT_USER.name||CURRENT_USER.username) : 'ADMIN';
+  p.approvedAt = today();
+  try {
+    await callAPI('updateShortagePayment', {record: p});
+    toast('Payment approved ✓', 'ok');
+    if (btnEl) { btnEl.disabled = false; btnEl.textContent = 'Approve'; }
+    var ob = typeof DRIVER_OPENING_BALANCES !== 'undefined'
+      ? DRIVER_OPENING_BALANCES.find(function(o){ return o.id === obId; }) : null;
+    openOBDetail(obId, ob ? ob.driver : '');
+    updateBadges(); window.renderShortage();
+  } catch(e) {
+    p.status=_prev.status; p.approvedBy=_prev.approvedBy; p.approvedAt=_prev.approvedAt;
+    toast('Error: ' + e.message, 'er');
+    if (btnEl) { btnEl.disabled = false; btnEl.textContent = 'Approve'; }
+  }
+}
+
+async function rejectOBPayment(paymentId, obId, btnEl) {
+  var p = SHORTAGE_PMTS.find(function(x){ return x.id === paymentId; });
+  if (!p) return;
+  var reason = prompt('Reason for rejection (optional):');
+  if (reason === null) return;
+  if (btnEl) { if (btnEl.disabled) return; btnEl.disabled = true; btnEl.textContent = 'Rejecting...'; }
+  var _prev = {status:p.status, rejectedBy:p.rejectedBy, rejectedAt:p.rejectedAt, rejectionReason:p.rejectionReason};
+  p.status = 'REJECTED';
+  p.rejectedBy = CURRENT_USER ? (CURRENT_USER.name||CURRENT_USER.username) : 'ADMIN';
+  p.rejectedAt = today();
+  p.rejectionReason = reason || '';
+  try {
+    await callAPI('updateShortagePayment', {record: p});
+    toast('Payment rejected', 'ok');
+    if (btnEl) { btnEl.disabled = false; btnEl.textContent = 'Reject'; }
+    var ob = typeof DRIVER_OPENING_BALANCES !== 'undefined'
+      ? DRIVER_OPENING_BALANCES.find(function(o){ return o.id === obId; }) : null;
+    openOBDetail(obId, ob ? ob.driver : '');
+    updateBadges(); window.renderShortage();
+  } catch(e) {
+    p.status=_prev.status; p.rejectedBy=_prev.rejectedBy; p.rejectedAt=_prev.rejectedAt; p.rejectionReason=_prev.rejectionReason;
+    toast('Error: ' + e.message, 'er');
+    if (btnEl) { btnEl.disabled = false; btnEl.textContent = 'Reject'; }
+  }
 }
 
 // ── SHORTAGE PAYMENT HISTORY ──────────────────────────────────────

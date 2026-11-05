@@ -3864,13 +3864,35 @@ function updateBadges(){
     return(t.status||'').toUpperCase()==='COMPLETED'&&parseFloat(t.excessLoss||0)>0
         &&!FUEL_LOSS.some(function(f){return f.tripId===t.id||f.tripNo===t.tripNo;});
   }).length;
-  // Add unpaid opening balances to shortage badge count
-  var obShort = (typeof DRIVER_OPENING_BALANCES!=='undefined') ? DRIVER_OPENING_BALANCES.filter(function(ob){
-    if(!(parseFloat(ob.openingBalanceTZS||0)>0)) return false;
-    var obKey='ob-'+ob.id;
-    var paid=SHORTAGE_PMTS.filter(function(p){return p.fuelLossId===obKey&&(p.status||'').toUpperCase()==='APPROVED';}).reduce(function(s,p){return s+parseFloat(p.amountTZS||0);},0);
-    return Math.max(0,parseFloat(ob.openingBalanceTZS)-paid)>0;
-  }).length : 0;
+  // Add unpaid opening balances to shortage badge count (includes fuel-shortage deductions merged into OB)
+  var obShort = 0;
+  (function(){
+    // Build merged OB map: driver → { obAmt, obKey, fsAmt, fsDedIds }
+    var obMap = {};
+    if (typeof DRIVER_OPENING_BALANCES !== 'undefined') {
+      DRIVER_OPENING_BALANCES.forEach(function(ob){
+        if (!ob.driver || !(parseFloat(ob.openingBalanceTZS||0)>0)) return;
+        obMap[ob.driver] = obMap[ob.driver]||{obAmt:0,obKey:null,fsAmt:0,fsDedIds:[]};
+        obMap[ob.driver].obAmt = parseFloat(ob.openingBalanceTZS||0);
+        obMap[ob.driver].obKey = 'ob-'+ob.id;
+      });
+    }
+    if (typeof DEDUCTIONS !== 'undefined') {
+      DEDUCTIONS.forEach(function(d){
+        if (!d.driver || (d.type||'') !== 'Fuel Shortage') return;
+        obMap[d.driver] = obMap[d.driver]||{obAmt:0,obKey:null,fsAmt:0,fsDedIds:[]};
+        obMap[d.driver].fsAmt += parseFloat(d.amountTZS||0);
+        obMap[d.driver].fsDedIds.push(d.id);
+      });
+    }
+    Object.keys(obMap).forEach(function(driver){
+      var e=obMap[driver];
+      var total=e.obAmt+e.fsAmt; if(!(total>0)) return;
+      var obPaid=e.obKey?SHORTAGE_PMTS.filter(function(p){return p.fuelLossId===e.obKey&&(p.status||'').toUpperCase()==='APPROVED';}).reduce(function(s,p){return s+parseFloat(p.amountTZS||0);},0):0;
+      var fsPaid=typeof DEDUCTION_PMTS!=='undefined'&&e.fsDedIds.length?DEDUCTION_PMTS.filter(function(p){return e.fsDedIds.indexOf(p.deductionId)!==-1&&(p.status||'').toUpperCase()==='APPROVED';}).reduce(function(s,p){return s+parseFloat(p.amountTZS||0);},0):0;
+      if(Math.max(0,total-obPaid-fsPaid)>0) obShort++;
+    });
+  })();
   set('badge-shortage', shortageOut+autoShort+obShort);
 
   // Deductions
@@ -6327,6 +6349,18 @@ function _letterViewLink(url) {
 
 // ── DRIVER SUMMARY + STATEMENT ───────────────────────────────────
 var _dsumRows = []; // computed summary rows, kept so export functions can read selections against them
+var _dsumVisibleRows = []; // sorted+filtered rows as currently shown — export preserves this order
+var _dsumSort = { col: 'driver', dir: 'asc' }; // current sort state
+
+function dsumSortBy(col) {
+  if (_dsumSort.col === col) {
+    _dsumSort.dir = _dsumSort.dir === 'asc' ? 'desc' : 'asc';
+  } else {
+    _dsumSort.col = col;
+    _dsumSort.dir = col === 'driver' ? 'asc' : 'desc'; // numbers default desc
+  }
+  renderDriverSummary();
+}
 
 function renderDriverSummary() {
   var wrap = document.getElementById('driveraccts-table-wrap');
@@ -6364,15 +6398,28 @@ function renderDriverSummary() {
       var isOBPmt   = obFuelLossId && p.fuelLossId === obFuelLossId;
       return (isTripPmt || isOBPmt) && (p.status||'').toUpperCase()==='APPROVED';
     }).reduce(function(s,p){return s+parseFloat(p.amountTZS||0);},0);
-    var dedRecs=typeof DEDUCTIONS!=='undefined'?DEDUCTIONS.filter(function(d){return d.driver===driver;}):[];
-    var dedOwed=dedRecs.reduce(function(s,d){return s+parseFloat(d.amountTZS||0);},0);
+    var allDedRecs=typeof DEDUCTIONS!=='undefined'?DEDUCTIONS.filter(function(d){return d.driver===driver;}):[];
+    // Fuel Shortage deductions are reclassified to the shortage side (they appear as OB on shortage register)
+    var fsDedRecs=allDedRecs.filter(function(d){return (d.type||'')==='Fuel Shortage';});
+    // Add fuel-shortage deduction amounts into shortOwed (merged into OB)
+    shortOwed += fsDedRecs.reduce(function(s,d){return s+parseFloat(d.amountTZS||0);},0);
+    // dedOwed only covers non-fuel-shortage deductions
+    var dedOwed=allDedRecs.reduce(function(s,d){
+      if((d.type||'')==='Fuel Shortage') return s;
+      return s+parseFloat(d.amountTZS||0);
+    },0);
+    // dedPaid covers all deduction payments (fuel-shortage payments flow through deduction_pmts too)
     var dedPaid=typeof DEDUCTION_PMTS!=='undefined'?DEDUCTION_PMTS.filter(function(p){
-      return dedRecs.some(function(d){return d.id===p.deductionId;})&&(p.status||'').toUpperCase()==='APPROVED';
+      return allDedRecs.some(function(d){return d.id===p.deductionId;})&&(p.status||'').toUpperCase()==='APPROVED';
     }).reduce(function(s,p){return s+parseFloat(p.amountTZS||0);},0):0;
     var totalOwed=shortOwed+dedOwed; var totalPaid=shortPaid+dedPaid;
     var balance=Math.max(0,totalOwed-totalPaid);
+    var shortBal=Math.max(0,shortOwed-shortPaid);
+    var dedBal=Math.max(0,dedOwed-dedPaid);
     var stt=balance<=0?'PAID':totalPaid>0?'PARTIAL':'UNPAID';
-    return {driver:driver, shortOwed:shortOwed, dedOwed:dedOwed, totalOwed:totalOwed, totalPaid:totalPaid, balance:balance, status:stt,
+    return {driver:driver, shortOwed:shortOwed, dedOwed:dedOwed, totalOwed:totalOwed,
+      totalPaid:totalPaid, shortPaid:shortPaid, dedPaid:dedPaid,
+      balance:balance, shortBal:shortBal, dedBal:dedBal, status:stt,
       openingBalance:openingBal, openingBalanceAsOf:openingBalRec?openingBalRec.asOfDate:''};
   });
 
@@ -6386,6 +6433,15 @@ function renderDriverSummary() {
     if (statusFilter && r.status !== statusFilter) return false;
     return true;
   });
+
+  // Sort
+  visibleRows.sort(function(a, b){
+    var col = _dsumSort.col, dir = _dsumSort.dir === 'asc' ? 1 : -1;
+    var av = a[col], bv = b[col];
+    if (col === 'driver') return dir * av.localeCompare(bv);
+    return dir * (parseFloat(av||0) - parseFloat(bv||0));
+  });
+  _dsumVisibleRows = visibleRows; // keep sorted list for export
 
   var sub = document.getElementById('driveraccts-sub');
   if(sub){
@@ -6410,7 +6466,41 @@ function renderDriverSummary() {
     + '<div style="flex:1"></div>'
     + '<div id="dsum-bulk-btns" style="display:none;align-items:center;gap:8px">'
       + '<span id="dsum-sel-count" style="font-size:12px;color:var(--t2);font-weight:600"></span>'
-      + '<button class="btn bp" style="background:#0a2d6e;font-size:12px" onclick="dsumExportPDF()">📄 Export PDF</button>'
+      + (function(){
+          function _mi(mode, label, sub, accent, iconPath) {
+            var border = mode !== 'combined' ? 'border-bottom:1px solid var(--br,#f3f4f6);' : '';
+            return '<div onclick="dsumExportPDF(\''+mode+'\');toggleDsumPdfMenu()" '
+              + 'style="display:flex;align-items:center;gap:12px;padding:11px 14px;cursor:pointer;'+border+'transition:background .12s" '
+              + 'onmouseover="this.style.background=\'var(--hover,#f8f8fb)\'" onmouseout="this.style.background=\'\'">'
+              + '<div style="width:32px;height:32px;border-radius:8px;background:'+accent+'18;display:flex;align-items:center;justify-content:center;flex-shrink:0">'
+              + '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="'+accent+'" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="'+iconPath+'"/></svg>'
+              + '</div>'
+              + '<div style="min-width:0">'
+              + '<div style="font-size:12px;font-weight:700;color:var(--t1,#111);line-height:1.2">'+label+'</div>'
+              + '<div style="font-size:10px;color:var(--t3,#9ca3af);margin-top:2px;line-height:1.4">'+sub+'</div>'
+              + '</div>'
+              + '<svg style="margin-left:auto;flex-shrink:0;opacity:.35" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="9 18 15 12 9 6"/></svg>'
+              + '</div>';
+          }
+          return '<div style="position:relative;display:inline-block" id="dsum-pdf-wrap">'
+            + '<div style="display:inline-flex;align-items:stretch;border-radius:7px;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,.18)">'
+            + '<button class="btn bp" style="background:#0a2d6e;font-size:12px;border-radius:0;border-right:1px solid rgba(255,255,255,.15);padding:0 13px;margin:0;box-shadow:none" onclick="dsumExportPDF(\'combined\')">'
+            + '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0;margin-right:5px;vertical-align:-2px"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>'
+            + 'Export PDF</button>'
+            + '<button class="btn bp" style="background:#0a2d6e;border-radius:0;padding:0 8px;margin:0;min-width:0;box-shadow:none" onclick="toggleDsumPdfMenu(event)" title="Choose report type">'
+            + '<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,.75)" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>'
+            + '</button>'
+            + '</div>'
+            + '<div id="dsum-pdf-menu" style="display:none;position:absolute;top:calc(100% + 6px);left:0;width:268px;background:var(--bg,#fff);border:1px solid var(--br,#e5e7eb);border-radius:12px;box-shadow:0 12px 40px rgba(0,0,0,.14),0 2px 8px rgba(0,0,0,.07);z-index:9999;overflow:hidden">'
+            + '<div style="padding:9px 14px 8px 14px;border-bottom:1px solid var(--br,#f0f0f0);display:flex;align-items:center;gap:7px">'
+            + '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#9ca3af" stroke-width="2.2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>'
+            + '<span style="font-size:10px;font-weight:700;letter-spacing:.07em;text-transform:uppercase;color:#9ca3af">Export as PDF</span>'
+            + '</div>'
+            + _mi('shortage','Shortage Report','S/No · Driver · Shortage Owed · Total Paid · Balance','#b91c1c','M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z')
+            + _mi('deductions','Deductions Report','S/No · Driver · Deductions Owed · Total Paid · Balance','#b45309','M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z')
+            + _mi('combined','Combined Report','S/No · Driver · Shortage · Deductions · Total Paid · Balance','#0a2d6e','M4 6h16M4 10h16M4 14h16M4 18h16')
+            + '</div></div>';
+        })()
       + '<button class="btn bp" style="background:#166534;font-size:12px" onclick="dsumExportExcel()">📊 Export Excel</button>'
     + '</div>'
     + '</div>';
@@ -6420,11 +6510,17 @@ function renderDriverSummary() {
     if (hadFocus) { var _si=document.getElementById('dsum-search-driver'); if(_si){ _si.focus(); _si.setSelectionRange(caretPos,caretPos); } }
     return;
   }
-  var thS='padding:9px 14px;text-align:left;font-size:11px;font-weight:700;color:rgba(255,255,255,.85);text-transform:uppercase;letter-spacing:.06em';
+  var thS='padding:9px 14px;text-align:left;font-size:11px;font-weight:700;color:rgba(255,255,255,.85);text-transform:uppercase;letter-spacing:.06em;white-space:nowrap';
+  var thBtn='cursor:pointer;user-select:none;display:flex;align-items:center;gap:5px';
+  function _sortArrow(col){ return _dsumSort.col===col ? (_dsumSort.dir==='asc'?'▲':'▼') : '<span style="opacity:.35">⇅</span>'; }
   var html='<table style="width:100%;border-collapse:collapse"><thead><tr style="background:var(--ac)">'
     +'<th style="'+thS+';width:36px"><input type="checkbox" id="dsum-cb-all" onchange="toggleAllDsumChecks(this)"></th>'
-    +'<th style="'+thS+'">Driver</th><th style="'+thS+'">Shortage Owed</th><th style="'+thS+'">Deductions Owed</th>'
-    +'<th style="'+thS+'">Total Owed</th><th style="'+thS+'">Total Paid</th><th style="'+thS+'">Balance</th>'
+    +'<th style="'+thS+'" onclick="dsumSortBy(\'driver\')"><div style="'+thBtn+'">Driver '+_sortArrow('driver')+'</div></th>'
+    +'<th style="'+thS+'" onclick="dsumSortBy(\'shortOwed\')"><div style="'+thBtn+'">Shortage Owed '+_sortArrow('shortOwed')+'</div></th>'
+    +'<th style="'+thS+'" onclick="dsumSortBy(\'dedOwed\')"><div style="'+thBtn+'">Deductions Owed '+_sortArrow('dedOwed')+'</div></th>'
+    +'<th style="'+thS+'" onclick="dsumSortBy(\'totalOwed\')"><div style="'+thBtn+'">Total Owed '+_sortArrow('totalOwed')+'</div></th>'
+    +'<th style="'+thS+'" onclick="dsumSortBy(\'totalPaid\')"><div style="'+thBtn+'">Total Paid '+_sortArrow('totalPaid')+'</div></th>'
+    +'<th style="'+thS+'" onclick="dsumSortBy(\'balance\')"><div style="'+thBtn+'">Balance '+_sortArrow('balance')+'</div></th>'
     +'<th style="'+thS+'">Status</th><th style="'+thS+'">Actions</th></tr></thead><tbody>';
   visibleRows.forEach(function(r,idx){
     var rowBg=idx%2===0?'':'background:#fafbfc;';
@@ -6462,7 +6558,8 @@ function updateDsumBulkBtns() {
 
 function _getSelectedDsumRows() {
   var names = Array.from(document.querySelectorAll('.dsum-cb:checked')).map(function(c){ return c.value; });
-  return _dsumRows.filter(function(r){ return names.indexOf(r.driver) !== -1; });
+  // Filter from the sorted visible list so export order matches the table
+  return _dsumVisibleRows.filter(function(r){ return names.indexOf(r.driver) !== -1; });
 }
 
 function dsumExportExcel() {
@@ -6484,28 +6581,172 @@ function dsumExportExcel() {
   toast(selected.length+' driver'+(selected.length!==1?'s':'')+' exported to '+filename+' ✓','ok');
 }
 
-function dsumExportPDF() {
-  var selected = _getSelectedDsumRows();
-  if (!selected.length) { toast('Select at least one driver','er'); return; }
-  var totalOwed=0, totalPaid=0, totalBal=0;
-  var rows = selected.map(function(r){
-    totalOwed+=r.totalOwed; totalPaid+=r.totalPaid; totalBal+=r.balance;
-    return '<tr><td><b>'+esc(r.driver)+'</b></td>'
-      +'<td style="text-align:right">'+fmt(r.shortOwed)+'</td>'
-      +'<td style="text-align:right">'+fmt(r.dedOwed)+'</td>'
-      +'<td style="text-align:right;font-weight:700">'+fmt(r.totalOwed)+'</td>'
-      +'<td style="text-align:right">'+fmt(r.totalPaid)+'</td>'
-      +'<td style="text-align:right;font-weight:800">'+fmt(r.balance)+'</td>'
-      +'<td>'+esc(r.status)+'</td></tr>';
-  }).join('');
-  _printFormWindow({
-    title: 'Driver Accounts Summary',
-    formTitle: 'Driver Accounts Summary',
-    theadHtml: '<tr><th>Driver</th><th style="text-align:right">Shortage Owed</th><th style="text-align:right">Deductions Owed</th><th style="text-align:right">Total Owed</th><th style="text-align:right">Total Paid</th><th style="text-align:right">Balance</th><th>Status</th></tr>',
-    tbodyHtml: rows,
-    tfootHtml: '<tr><td style="text-align:right">TOTAL</td><td></td><td></td><td style="text-align:right">'+fmt(totalOwed)+'</td><td style="text-align:right">'+fmt(totalPaid)+'</td><td style="text-align:right">'+fmt(totalBal)+'</td><td></td></tr>',
-    noSignatures: true
+function toggleDsumPdfMenu(e) {
+  if (e) e.stopPropagation();
+  var menu = document.getElementById('dsum-pdf-menu');
+  if (!menu) return;
+  var open = menu.style.display === 'block';
+  menu.style.display = open ? 'none' : 'block';
+  if (!open) {
+    // Close on next outside click
+    setTimeout(function(){
+      document.addEventListener('click', function _closeDsumMenu(){ menu.style.display='none'; document.removeEventListener('click',_closeDsumMenu); });
+    }, 0);
+  }
+}
+
+function dsumExportPDF(mode) {
+  mode = mode || 'combined';
+  var isSh  = mode === 'shortage';
+  var isDed = mode === 'deductions';
+  var selected = _getSelectedDsumRows().filter(function(r){
+    if (isSh)  return r.shortBal > 0;
+    if (isDed) return r.dedBal   > 0;
+    return r.balance > 0;
   });
+  if (!selected.length) { toast('No drivers with outstanding balances in this report','er'); return; }
+
+  // Re-apply sort using mode-appropriate balance field (screen sort uses combined balance)
+  var sCol = _dsumSort.col, sDir = _dsumSort.dir === 'asc' ? 1 : -1;
+  if (sCol === 'balance') {
+    selected = selected.slice().sort(function(a,b){
+      var av = isSh ? a.shortBal : isDed ? a.dedBal : a.balance;
+      var bv = isSh ? b.shortBal : isDed ? b.dedBal : b.balance;
+      return sDir * (av - bv);
+    });
+  } else if (sCol === 'totalPaid') {
+    selected = selected.slice().sort(function(a,b){
+      var av = isSh ? a.shortPaid : isDed ? a.dedPaid : a.totalPaid;
+      var bv = isSh ? b.shortPaid : isDed ? b.dedPaid : b.totalPaid;
+      return sDir * (av - bv);
+    });
+  }
+
+  var titles = { shortage: 'Driver Shortage Report', deductions: 'Driver Deductions Report', combined: 'Driver Accounts Summary' };
+  var reportTitle = titles[mode] || titles.combined;
+  var company = (typeof SETTINGS !== 'undefined' && SETTINGS.companyName) || 'AK TRANSPORT (T) LIMITED';
+  var printDate = new Date().toLocaleDateString('en-GB',{day:'2-digit',month:'long',year:'numeric'});
+  var colLabels = {driver:'Driver',shortOwed:'Shortage Owed',dedOwed:'Deductions Owed',totalOwed:'Total Owed',totalPaid:'Total Paid',balance:'Balance'};
+  var sortNote = (colLabels[_dsumSort.col]||_dsumSort.col) + ' — ' + (_dsumSort.dir==='asc'?'A → Z / Low → High':'Z → A / High → Low');
+
+  var totalShort=0, totalDed=0, totalPaid=0, totalBal=0, totalOwedAll=0;
+  var sno = 0;
+
+  // Build table columns config
+  var cols = [{key:'sno',label:'#',align:'center',w:'36px'},{key:'driver',label:'Driver',align:'left'}];
+  if (isSh)       cols.push({key:'shortOwed',label:'Shortage Owed',align:'right'});
+  else if (isDed) cols.push({key:'dedOwed',label:'Deductions Owed',align:'right'});
+  else            cols.push({key:'shortOwed',label:'Shortage Owed',align:'right'},{key:'dedOwed',label:'Deductions Owed',align:'right'});
+  cols.push({key:'totalPaid',label:'Total Paid',align:'right'},{key:'balance',label:'Outstanding Balance',align:'right'});
+
+  var thCells = cols.map(function(c){
+    return '<th style="padding:8px '+(c.key==='sno'?'8px':'11px')+';text-align:'+c.align+';font-size:9px;font-weight:700;'
+      +'text-transform:uppercase;letter-spacing:.06em;color:#fff;background:#0a2d6e;'
+      +(c.w?'width:'+c.w+';':'')
+      +'border-right:1px solid #1a4080;white-space:nowrap">'+c.label+'</th>';
+  }).join('');
+
+  var tbodyHtml = selected.map(function(r){
+    sno++;
+    totalShort += r.shortOwed; totalDed += r.dedOwed;
+    var rowPaid = isSh ? r.shortPaid : isDed ? r.dedPaid : r.totalPaid;
+    var rowBal  = isSh ? r.shortBal  : isDed ? r.dedBal  : r.balance;
+    totalPaid += rowPaid; totalBal += rowBal;
+    totalOwedAll += (isSh ? r.shortOwed : isDed ? r.dedOwed : r.shortOwed + r.dedOwed);
+    var bg = sno%2===0 ? '#ebebeb' : '#fff';
+    var cells = '';
+    cols.forEach(function(c){
+      var val='', style='padding:7px '+(c.key==='sno'?'8px':'11px')+';text-align:'+c.align+';font-size:10px;'
+        +'border-bottom:1px solid #ccc;border-right:1px solid #ccc;background:'+bg+';color:#000;';
+      if (c.key==='sno')            { val='<span style="color:#666;font-size:9px">'+sno+'</span>'; }
+      else if (c.key==='driver')    { val='<b>'+esc(r.driver)+'</b>'; }
+      else if (c.key==='shortOwed') { val='TZS '+fmt(r.shortOwed); }
+      else if (c.key==='dedOwed')   { val='TZS '+fmt(r.dedOwed); }
+      else if (c.key==='totalPaid') { val='TZS '+fmt(rowPaid); }
+      else if (c.key==='balance')   {
+        style += 'font-weight:700;';
+        val = rowBal<=0 ? 'CLEARED' : 'TZS '+fmt(rowBal);
+      }
+      cells += '<td style="'+style+'">'+val+'</td>';
+    });
+    return '<tr>'+cells+'</tr>';
+  }).join('');
+
+  // Totals footer row
+  var tfCells = cols.map(function(c){
+    var style='padding:8px '+(c.key==='sno'?'8px':'11px')+';text-align:'+c.align+';font-size:10px;font-weight:700;'
+      +'border-top:2px solid #000;border-bottom:2px solid #000;border-right:1px solid #ccc;background:#e8e8e8;color:#000;';
+    var val='';
+    if (c.key==='driver') val='TOTAL';
+    else if (c.key==='shortOwed') val='TZS '+fmt(totalShort);
+    else if (c.key==='dedOwed')   val='TZS '+fmt(totalDed);
+    else if (c.key==='totalPaid') val='TZS '+fmt(totalPaid);
+    else if (c.key==='balance')   val='TZS '+fmt(totalBal);
+    return '<td style="'+style+'">'+val+'</td>';
+  }).join('');
+
+  // Summary boxes — black border, white background, clean
+  var owedLabel = isSh ? 'Total Shortage Owed' : isDed ? 'Total Deductions Owed' : 'Total Owed';
+  var summaryItems = !isSh && !isDed
+    ? [{l:'Shortage Owed',v:fmt(totalShort)},{l:'Deductions Owed',v:fmt(totalDed)},{l:'Total Paid',v:fmt(totalPaid)},{l:'Outstanding Balance',v:fmt(totalBal)}]
+    : [{l:owedLabel,v:fmt(totalOwedAll)},{l:'Total Paid',v:fmt(totalPaid)},{l:'Outstanding Balance',v:fmt(totalBal)}];
+  var summaryHtml = summaryItems.map(function(s){
+    var isLast = s.l==='Outstanding Balance';
+    return '<div style="flex:1;min-width:120px;border:1.5px solid #000;padding:12px 16px;'+(isLast?'background:#e8e8e8':'')+'">'
+      +'<div style="font-size:8.5px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:#444;margin-bottom:5px">'+s.l+'</div>'
+      +'<div style="font-size:14px;font-weight:900;color:#000;letter-spacing:-.2px">TZS '+s.v+'</div>'
+      +'</div>';
+  }).join('');
+
+  var html = '<!DOCTYPE html><html><head><meta charset="UTF-8"><title>'+esc(reportTitle)+'</title>'
+    +'<style>'
+    +'*{box-sizing:border-box;margin:0;padding:0}'
+    +'body{font-family:Arial,Helvetica,sans-serif;font-size:11px;color:#000;background:#fff;padding:24px 28px}'
+    +'@media print{@page{margin:12mm 10mm;size:A4}body{padding:0}-webkit-print-color-adjust:exact;print-color-adjust:exact}'
+    +'table{width:100%;border-collapse:collapse;border:1.5px solid #000}'
+    +'tfoot{display:table-row-group}'
+    +'</style></head><body>'
+
+    // ── Header
+    +'<div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:4px">'
+    +'<div>'
+    +'<div style="font-size:18px;font-weight:900;color:#0a2d6e;letter-spacing:-.3px">'+esc(company)+'</div>'
+    +'<div style="font-size:13px;font-weight:700;color:#000;margin-top:3px">'+esc(reportTitle)+'</div>'
+    +'</div>'
+    +'<div style="text-align:right;font-size:10px;color:#000">'
+    +'<div style="font-weight:700">Date Printed</div>'
+    +'<div>'+printDate+'</div>'
+    +'</div>'
+    +'</div>'
+    +'<div style="border-top:3px solid #0a2d6e;margin:10px 0 0 0"></div>'
+
+    // ── Table
+    +'<table style="margin-bottom:0"><thead><tr>'+thCells+'</tr></thead>'
+    +'<tbody>'+tbodyHtml+'</tbody>'
+    +'</table>'
+    // Totals row — outside tfoot so it doesn't repeat on every printed page
+    +'<table style="width:100%;border-collapse:collapse;border:1.5px solid #000;border-top:none;page-break-inside:avoid"><tbody><tr>'+tfCells+'</tr></tbody></table>'
+
+    // ── Summary panel
+    +'<div style="margin-top:20px;border:1.5px solid #000">'
+    +'<div style="background:#0a2d6e;padding:7px 14px">'
+    +'<div style="font-size:9.5px;font-weight:700;letter-spacing:.07em;text-transform:uppercase;color:#fff">Report Summary</div>'
+    +'</div>'
+    +'<div style="display:flex;gap:0;border-top:1.5px solid #000">'+summaryHtml+'</div>'
+    +'</div>'
+
+    // ── Footer
+    +'<div style="border-top:1px solid #000;margin-top:12px;padding-top:7px;display:flex;justify-content:space-between;align-items:center">'
+    +'<div style="font-size:8.5px;color:#333">'+esc(company)+' — Trip Management System — Generated '+printDate+'</div>'
+    +'<div style="font-size:8.5px;color:#333">CONFIDENTIAL — Internal Use Only</div>'
+    +'</div>'
+
+    +'<scr'+'ipt>window.onload=function(){window.print();window.onafterprint=function(){window.close();};};</'+'script>'
+    +'</body></html>';
+
+  var win = window.open('','_blank','width=1050,height=750');
+  if (win) { win.document.write(html); win.document.close(); }
+  else { toast('Pop-up blocked — please allow pop-ups for this site','er'); }
 }
 
 function openDriverStatement(driver) {
@@ -10004,28 +10245,48 @@ window.renderShortage = function() {
     };
   });
 
-  // Opening balance rows — one per driver with an opening balance > 0 (always shown first)
+  // Opening balance rows — one per driver (always shown first).
+  // Includes DRIVER_OPENING_BALANCES entries AND any DEDUCTIONS with type 'Fuel Shortage',
+  // merged together per driver so they appear as a single OB row.
   var obRows = [];
-  if (typeof DRIVER_OPENING_BALANCES !== 'undefined') {
-    DRIVER_OPENING_BALANCES.forEach(function(ob){
-      if (!ob.driver || !(parseFloat(ob.openingBalanceTZS||0) > 0)) return;
+  (function(){
+    // Build a map of driver → { obRec, fuelShortDeds }
+    var driverObMap = {};
+    if (typeof DRIVER_OPENING_BALANCES !== 'undefined') {
+      DRIVER_OPENING_BALANCES.forEach(function(ob){
+        if (!ob.driver) return;
+        if (!driverObMap[ob.driver]) driverObMap[ob.driver] = { obRec: null, fuelShortDeds: [] };
+        driverObMap[ob.driver].obRec = ob;
+      });
+    }
+    if (typeof DEDUCTIONS !== 'undefined') {
+      DEDUCTIONS.forEach(function(d){
+        if (!d.driver || (d.type||'') !== 'Fuel Shortage') return;
+        if (!driverObMap[d.driver]) driverObMap[d.driver] = { obRec: null, fuelShortDeds: [] };
+        driverObMap[d.driver].fuelShortDeds.push(d);
+      });
+    }
+    Object.keys(driverObMap).forEach(function(driver){
+      var entry = driverObMap[driver];
+      var obAmt = entry.obRec ? parseFloat(entry.obRec.openingBalanceTZS||0) : 0;
+      var fsAmt = entry.fuelShortDeds.reduce(function(s,d){ return s+parseFloat(d.amountTZS||0); }, 0);
+      var total = obAmt + fsAmt;
+      if (!(total > 0)) return;
+      var obId  = entry.obRec ? entry.obRec.id : 'fs-' + driver.replace(/\s+/g,'_');
+      var obDate= entry.obRec ? (entry.obRec.asOfDate||'') : (entry.fuelShortDeds[0] ? (entry.fuelShortDeds[0].date||'') : '');
       obRows.push({
-        id: 'ob-' + ob.id,
-        tripNo: '—',
-        driver: ob.driver,
-        horse: '—',
-        customer: '—',
-        destination: '—',
-        loadedQty: 0,
-        offloadedQty: 0,
-        excessLoss: 0,
-        driverOwsTZS: parseFloat(ob.openingBalanceTZS),
+        id: 'ob-' + obId,
+        tripNo: '—', driver: driver, horse: '—', customer: '—', destination: '—',
+        loadedQty: 0, offloadedQty: 0, excessLoss: 0,
+        driverOwsTZS: total,
         _isOB: true,
-        _obId: ob.id,
-        _obDate: ob.asOfDate || ''
+        _obId: obId,
+        _obDate: obDate
       });
     });
-  }
+    // Sort OB rows alphabetically by driver so they appear consistently
+    obRows.sort(function(a,b){ return a.driver.localeCompare(b.driver); });
+  })();
 
   // Merge: opening balance rows first, then FUEL_LOSS + auto trips
   var combined = obRows.concat(FUEL_LOSS).concat(autoTrips);

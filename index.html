@@ -356,6 +356,7 @@ td,td *{font-size:13px!important;font-family:'Inter',sans-serif!important}
       <div class="nav-section-header open" onclick="toggleNavSection('finance')"><span>&#128176; Finances</span><span class="nav-arrow">&#9658;</span></div>
       <div class="nav-section-body open">
         <div class="navitem" id="nav-pnl" onclick="switchView('pnl')">&#128200; P&amp;L Summaries</div>
+        <div class="navitem" id="nav-reports" onclick="switchView('reports')">&#128202; Reports</div>
       </div>
     </div>
     <div class="divider"></div>
@@ -2136,6 +2137,39 @@ td,td *{font-size:13px!important;font-family:'Inter',sans-serif!important}
 
     <!-- COMBINED P&L -->
 
+    <!-- REPORTS DASHBOARD -->
+    <div id="view-reports" class="hidden" style="display:flex;flex-direction:column;overflow:hidden;flex:1">
+      <div id="toolbar">
+        <div><div class="vtitle">&#128202; Reports</div><div class="viewsub" id="reports-sub">Trip & shortage analytics</div></div>
+        <div class="tb-divider"></div>
+        <select id="rpt-year-filter" onchange="renderReports()" style="background:#f0f4ff;border:1.5px solid var(--ac);border-radius:8px;padding:6px 10px;color:#1d3c6e;font-size:12px;font-weight:600;outline:none;cursor:pointer"></select>
+      </div>
+      <div style="padding:8px 22px 0;flex-shrink:0">
+        <div class="stab" id="reports-tabs">
+          <button class="stab-btn active" onclick="switchRptTab('monthly')">&#128197; Monthly Trips</button>
+          <button class="stab-btn" onclick="switchRptTab('drivers')">&#128100; Drivers</button>
+          <button class="stab-btn" onclick="switchRptTab('trucks')">&#128666; Trucks</button>
+          <button class="stab-btn" onclick="switchRptTab('clients-trips')">&#127970; Clients (Trips)</button>
+          <button class="stab-btn" onclick="switchRptTab('clients-short')">&#9888; Clients (Shortages)</button>
+        </div>
+      </div>
+      <div id="rpt-tab-monthly" style="flex:1;overflow:auto;padding:16px 22px 20px">
+        <div id="rpt-monthly-wrap"></div>
+      </div>
+      <div id="rpt-tab-drivers" class="hidden" style="flex:1;overflow:auto;padding:16px 22px 20px">
+        <div id="rpt-drivers-wrap"></div>
+      </div>
+      <div id="rpt-tab-trucks" class="hidden" style="flex:1;overflow:auto;padding:16px 22px 20px">
+        <div id="rpt-trucks-wrap"></div>
+      </div>
+      <div id="rpt-tab-clients-trips" class="hidden" style="flex:1;overflow:auto;padding:16px 22px 20px">
+        <div id="rpt-clients-trips-wrap"></div>
+      </div>
+      <div id="rpt-tab-clients-short" class="hidden" style="flex:1;overflow:auto;padding:16px 22px 20px">
+        <div id="rpt-clients-short-wrap"></div>
+      </div>
+    </div>
+
     <!-- SETTINGS -->
     <div id="view-settings" class="hidden" style="display:flex;flex-direction:column;overflow:hidden;flex:1">
       <div id="toolbar"><div><div class="vtitle">&#9881; System Settings</div><div class="viewsub">Configure rates, routes and fuel consumption</div></div><div class="tb-divider"></div><button class="btn bp" onclick="saveAllSettings()">&#128190; Save All Settings</button></div>
@@ -2901,7 +2935,8 @@ var _viewData = {
   agents:      ['agents'],
   invoicing:   ['trips','invoices','refdata'],
   settings:    ['refdata'],
-  pnl:         ['trips','fuelreq','refdata']
+  pnl:         ['trips','fuelreq','refdata'],
+  reports:     ['trips','ledger','refdata']
 };
 
 // Fetches one dataset, at most once. Concurrent requests for the same
@@ -3002,6 +3037,14 @@ async function switchView(v){
     },100);
   }
 
+  // Auto-open finance section for reports
+  var financeViews=['pnl','reports'];
+  if(financeViews.indexOf(v)!==-1){
+    var fh=document.querySelector('#navsec-finance .nav-section-header');
+    var fb=document.querySelector('#navsec-finance .nav-section-body');
+    if(fh&&!fh.classList.contains('open')){fh.classList.add('open');fb.classList.add('open');}
+  }
+
   // Driver accounts — use current tab
   if(v==='driveraccts') { switchDATab(_daCurrentTab||'accounts'); return; }
 
@@ -3023,7 +3066,8 @@ async function switchView(v){
     edittrip:function(){}, addtrips:initAddTripsView, addreleases:_initAddReleasesView,
     pnl:renderCombined,
     driveraccts:renderDriverAccounts, shortage:renderShortage,
-    deductions:renderDeductions, reqforms:function(){ switchRfTab(_rfCurrentTab||'fuel'); }
+    deductions:renderDeductions, reqforms:function(){ switchRfTab(_rfCurrentTab||'fuel'); },
+    reports:renderReports
   };
   if(renders[v])renders[v]();
 }
@@ -3318,6 +3362,7 @@ var _viewSyncConfig = {
                  fetch: function(){ return Promise.all([fbRead('/releases'),fbRead('/trips'),fbRead('/permits'),fbRead('/fuelLoss')]); },
                  apply: function(r){ RELEASES=r[0].records; TRIPS=r[1].records; PERMITS=r[2].records; FUEL_LOSS=r[3].records; _loaded.releases=true; _loaded.trips=true; _loaded.permits=true; _loaded.ledger=true; }, multi: true },
   driveraccts: { collections: ['trips'],        fetch: function(){ return fbRead('/trips');        }, apply: function(r){ TRIPS=r.records; _loaded.trips=true; } },
+  reports:     { collections: ['trips'],        fetch: function(){ return fbRead('/trips');        }, apply: function(r){ TRIPS=r.records; _loaded.trips=true; } },
 };
 
 // _renders is a function (not an object) so render functions defined in
@@ -6392,10 +6437,11 @@ function renderDriverSummary() {
                  +autoRecs.reduce(function(s,t){return s+Math.round(parseFloat(t.excessLoss||0)*parseFloat(t.ratePerLitre||SETTINGS.fuelLossRate||SETTINGS.fuelPrice||3200));},0)
                  +openingBal;
     // Count shortage payments (trip-based) + opening balance payments
-    var obFuelLossId = openingBalRec ? 'ob-' + openingBalRec.id : null;
+    // obFuelLossId: use real OB record id if available, else synthetic key for Fuel Shortage-only OBs
+    var obFuelLossId = openingBalRec ? ('ob-' + openingBalRec.id) : ('ob-fs-' + driver.replace(/\s+/g,'_'));
     var shortPaid=SHORTAGE_PMTS.filter(function(p){
       var isTripPmt = shortRecs.some(function(f){return f.id===p.fuelLossId;});
-      var isOBPmt   = obFuelLossId && p.fuelLossId === obFuelLossId;
+      var isOBPmt   = p.fuelLossId === obFuelLossId;
       return (isTripPmt || isOBPmt) && (p.status||'').toUpperCase()==='APPROVED';
     }).reduce(function(s,p){return s+parseFloat(p.amountTZS||0);},0);
     var allDedRecs=typeof DEDUCTIONS!=='undefined'?DEDUCTIONS.filter(function(d){return d.driver===driver;}):[];
@@ -6772,12 +6818,12 @@ function openDriverStatement(driver) {
     var f=shortRecs.find(function(x){return x.id===p.fuelLossId;}); pmtRows.push({date:p.receivedDate||'',ref:p.id.substring(0,8).toUpperCase(),relTo:f?f.tripNo||'--':'--',method:p.method||'Cash',status:p.status||'PENDING',amount:parseFloat(p.amountTZS||0)});
   });
   // Also include opening balance payments for this driver
-  if(obRec){
-    var obKey='ob-'+obRec.id;
-    SHORTAGE_PMTS.filter(function(p){return p.fuelLossId===obKey;}).forEach(function(p){
-      pmtRows.push({date:p.receivedDate||'',ref:p.id.substring(0,8).toUpperCase(),relTo:'Opening Bal',method:p.method||'Cash',status:p.status||'PENDING',amount:parseFloat(p.amountTZS||0)});
-    });
-  }
+  // obRec exists when there's a DRIVER_OPENING_BALANCES entry; use its id as the key
+  // If no obRec, the OB row is built from Fuel Shortage deductions and uses a synthetic key
+  var obKey = obRec ? ('ob-'+obRec.id) : ('ob-fs-'+driver.replace(/\s+/g,'_'));
+  SHORTAGE_PMTS.filter(function(p){return p.fuelLossId===obKey;}).forEach(function(p){
+    pmtRows.push({date:p.receivedDate||'',ref:p.id.substring(0,8).toUpperCase(),relTo:'Opening Bal',method:p.method||'Cash',status:p.status||'PENDING',amount:parseFloat(p.amountTZS||0)});
+  });
   if(typeof DEDUCTION_PMTS!=='undefined') DEDUCTION_PMTS.filter(function(p){return dedRecs.some(function(d){return d.id===p.deductionId;});}).forEach(function(p){
     var d=dedRecs.find(function(x){return x.id===p.deductionId;}); pmtRows.push({date:p.receivedDate||'',ref:p.id.substring(0,8).toUpperCase(),relTo:d?d.refNo||'--':'--',method:p.method||'Cash',status:p.status||'PENDING',amount:parseFloat(p.amountTZS||0)});
   });
@@ -7279,10 +7325,20 @@ function renderDeductions() {
   });
   data = data.map(function(d){
     var owed=parseFloat(d.amountTZS||0);
-    var paid=DEDUCTION_PMTS.filter(function(p){return p.deductionId===d.id&&(p.status||'').toUpperCase()==='APPROVED';}).reduce(function(s,p){return s+parseFloat(p.amountTZS||0);},0);
+    var isFuelShortage = (d.type||'')==='Fuel Shortage';
+    var paid;
+    if(isFuelShortage){
+      // Payments for Fuel Shortage deductions are stored in SHORTAGE_PMTS under the synthetic OB key
+      var obKey = 'ob-fs-' + (d.driver||'').replace(/\s+/g,'_');
+      paid = SHORTAGE_PMTS.filter(function(p){return p.fuelLossId===obKey&&(p.status||'').toUpperCase()==='APPROVED';}).reduce(function(s,p){return s+parseFloat(p.amountTZS||0);},0);
+    } else {
+      paid=DEDUCTION_PMTS.filter(function(p){return p.deductionId===d.id&&(p.status||'').toUpperCase()==='APPROVED';}).reduce(function(s,p){return s+parseFloat(p.amountTZS||0);},0);
+    }
     var bal=Math.max(0,owed-paid);
     var stt=bal<=0?'PAID':paid>0?'PARTIAL':'UNPAID';
-    var pendingCnt=DEDUCTION_PMTS.filter(function(p){return p.deductionId===d.id&&(p.status||'').toUpperCase()==='PENDING';}).length;
+    var pendingCnt=isFuelShortage
+      ? SHORTAGE_PMTS.filter(function(p){return p.fuelLossId===('ob-fs-'+(d.driver||'').replace(/\s+/g,'_'))&&(p.status||'').toUpperCase()==='PENDING';}).length
+      : DEDUCTION_PMTS.filter(function(p){return p.deductionId===d.id&&(p.status||'').toUpperCase()==='PENDING';}).length;
     return Object.assign({},d,{_owed:owed,_paid:paid,_bal:bal,_stt:stt,_pendingCnt:pendingCnt});
   }).filter(function(d){
     if(sfilt==='PENDING APPROVAL') return d._pendingCnt>0;
@@ -7314,8 +7370,8 @@ function renderDeductions() {
       +'<td style="font-family:monospace;font-weight:700;color:'+(d._bal>0?'#b91c1c':'#166534')+'">TZS '+fmt(d._bal)+'</td>'
       +'<td>'+shortageStatusBadge(d._stt, pmts.filter(function(p){return (p.status||'').toUpperCase()==='PENDING';}).length)+'</td>'
       +'<td class="td-actions">'
-      +(d._stt!=='PAID'?'<button class="actbtn e" onclick="openDedPayment(\''+d.id+'\')">+ Payment</button> ':'')
-      +'<button class="actbtn v" onclick="openDedDetail(\''+d.id+'\')">History('+pmts.length+')</button> '
+      +(d._stt!=='PAID'&&(d.type||'')!=='Fuel Shortage'?'<button class="actbtn e" onclick="openDedPayment(\''+d.id+'\')">+ Payment</button> ':'')
+      +((d.type||'')!=='Fuel Shortage'?'<button class="actbtn v" onclick="openDedDetail(\''+d.id+'\')">History('+pmts.length+')</button> ':'')
       +'<button class="actbtn e" onclick="editDeduction(\''+d.id+'\')">Edit</button> '
       +'<button class="actbtn d" onclick="deleteDeduction(\''+d.id+'\')">Delete</button>'
       +'</td></tr>';
@@ -10655,6 +10711,14 @@ function openOBDetail(obId, driver) {
   var ob = typeof DRIVER_OPENING_BALANCES !== 'undefined'
     ? DRIVER_OPENING_BALANCES.find(function(o){ return o.id === obId; }) : null;
   var owed = ob ? parseFloat(ob.openingBalanceTZS||0) : 0;
+  // Also include Fuel Shortage deductions for this driver (same logic as the OB row in renderShortage)
+  if (typeof DEDUCTIONS !== 'undefined') {
+    DEDUCTIONS.forEach(function(d){
+      if ((d.type||'') === 'Fuel Shortage' && d.driver === driver) {
+        owed += parseFloat(d.amountTZS||0);
+      }
+    });
+  }
   var paid = SHORTAGE_PMTS
     .filter(function(p){ return p.fuelLossId===obKey && (p.status||'').toUpperCase()==='APPROVED'; })
     .reduce(function(sum,p){ return sum+parseFloat(p.amountTZS||0); }, 0);
@@ -13124,6 +13188,221 @@ function switchCombinedTab(tab) {
     b.classList.toggle('active', ['trucks','overview'][i]===tab);
   });
   renderCombined();
+}
+
+// ── REPORTS DASHBOARD ────────────────────────────────────────────
+var _rptCurrentTab = 'monthly';
+
+function switchRptTab(tab) {
+  _rptCurrentTab = tab;
+  document.querySelectorAll('#reports-tabs .stab-btn').forEach(function(b, i) {
+    var tabs = ['monthly','drivers','trucks','clients-trips','clients-short'];
+    b.classList.toggle('active', tabs[i] === tab);
+  });
+  ['monthly','drivers','trucks','clients-trips','clients-short'].forEach(function(t) {
+    var el = document.getElementById('rpt-tab-' + t);
+    if (el) el.classList.toggle('hidden', t !== tab);
+  });
+  _renderRptTab(tab);
+}
+
+function renderReports() {
+  var sub = document.getElementById('reports-sub');
+  if (sub) sub.textContent = (TRIPS||[]).length + ' trips · ' + (FUEL_LOSS||[]).length + ' shortage records';
+  // Populate year filter
+  var sel = document.getElementById('rpt-year-filter');
+  if (sel) {
+    var years = {};
+    (TRIPS||[]).forEach(function(t) {
+      var d = t.loadingDate||'';
+      if (d) years[d.substring(0,4)] = true;
+    });
+    var yList = Object.keys(years).sort().reverse();
+    var curYear = new Date().getFullYear().toString();
+    var selVal = sel.value || (yList.indexOf(curYear) !== -1 ? curYear : (yList[0]||curYear));
+    sel.innerHTML = '<option value="">All Years</option>' + yList.map(function(y){
+      return '<option value="'+y+'"'+(y===selVal?' selected':'')+'>'+y+'</option>';
+    }).join('');
+  }
+  _renderRptTab(_rptCurrentTab);
+}
+
+function _rptFilteredTrips() {
+  var year = (document.getElementById('rpt-year-filter')||{}).value||'';
+  return (TRIPS||[]).filter(function(t) {
+    if (!year) return true;
+    return (t.loadingDate||'').startsWith(year);
+  });
+}
+
+function _rptShortOwedForDriver(driver) {
+  // Sum from FUEL_LOSS
+  var shortOwed = (FUEL_LOSS||[]).filter(function(f){ return f.driver===driver; })
+    .reduce(function(s,f){ return s+parseFloat(f.driverOwsTZS||0); }, 0);
+  // Add Fuel Shortage DEDUCTIONS
+  if (typeof DEDUCTIONS !== 'undefined') {
+    DEDUCTIONS.forEach(function(d) {
+      if ((d.type||'')==='Fuel Shortage' && d.driver===driver) {
+        shortOwed += parseFloat(d.amountTZS||0);
+      }
+    });
+  }
+  // Subtract SHORTAGE_PMTS approved payments
+  var obKey = 'ob-fs-' + driver.replace(/\s+/g,'_');
+  (SHORTAGE_PMTS||[]).forEach(function(p) {
+    if ((p.status||'').toUpperCase()==='APPROVED') {
+      var isTripPmt = (FUEL_LOSS||[]).some(function(f){ return f.id===p.fuelLossId && f.driver===driver; });
+      var isOBPmt = p.fuelLossId === obKey;
+      if (isTripPmt || isOBPmt) shortOwed -= parseFloat(p.amountTZS||0);
+    }
+  });
+  return Math.max(0, shortOwed);
+}
+
+function _rptShortForCustomer(customer) {
+  // All FUEL_LOSS records for trips linked to this customer
+  var total = 0;
+  (FUEL_LOSS||[]).forEach(function(f) {
+    var trip = (TRIPS||[]).find(function(t){ return t.id===f.tripId||t.tripNo===f.tripNo; });
+    var rel  = trip ? (RELEASES||[]).find(function(r){ return r.releaseNo===trip.releaseNo; }) : null;
+    var cust = rel ? (rel.customer||trip&&trip.customer||'—') : (trip&&trip.customer||'—');
+    if (cust === customer) total += parseFloat(f.driverOwsTZS||0);
+  });
+  return total;
+}
+
+function _rptTbl(headers, rows, emptyMsg) {
+  var thS = 'padding:8px 14px;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:rgba(255,255,255,.9);background:var(--ac);white-space:nowrap;text-align:left';
+  var thR = 'padding:8px 14px;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:rgba(255,255,255,.9);background:var(--ac);white-space:nowrap;text-align:right';
+  if (!rows.length) return '<div class="emptystate"><div style="font-size:40px">📊</div><h3>'+(emptyMsg||'No data')+'</h3></div>';
+  var hHtml = headers.map(function(h,i){
+    var align = (typeof h === 'object') ? h.align : (i>0?'right':'left');
+    var label = (typeof h === 'object') ? h.label : h;
+    return '<th style="'+(align==='right'?thR:thS)+'">'+esc(label)+'</th>';
+  }).join('');
+  var bHtml = rows.map(function(r,idx){
+    var bg = idx%2===0?'':'background:#fafbfc;';
+    var cells = r.map(function(c,i){
+      var align = (typeof headers[i]==='object') ? headers[i].align : (i>0?'right':'left');
+      var color = (typeof c === 'object') ? c.color : '';
+      var val   = (typeof c === 'object') ? c.val   : c;
+      return '<td style="padding:9px 14px;font-size:12px;'+(align==='right'?'text-align:right;font-family:monospace;':'')+(color?'color:'+color+';font-weight:600;':'')+'border-bottom:1px solid #f0f0f4">'+val+'</td>';
+    }).join('');
+    return '<tr style="'+bg+'">'+cells+'</tr>';
+  }).join('');
+  return '<table style="width:100%;border-collapse:collapse"><thead><tr>'+hHtml+'</tr></thead><tbody>'+bHtml+'</tbody></table>';
+}
+
+function _renderRptTab(tab) {
+  var trips = _rptFilteredTrips();
+  var fmt   = function(n){ return Number(n).toLocaleString(); };
+
+  if (tab === 'monthly') {
+    var months = {};
+    var MONTH_NAMES = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+    trips.forEach(function(t) {
+      var d = t.loadingDate||'';
+      if (!d) return;
+      var key = d.substring(0,7); // YYYY-MM
+      months[key] = (months[key]||0) + 1;
+    });
+    var keys = Object.keys(months).sort();
+    var rows = keys.map(function(k) {
+      var parts = k.split('-');
+      var label = MONTH_NAMES[parseInt(parts[1],10)-1] + ' ' + parts[0];
+      return [{val:label,color:''}, months[k]];
+    });
+    // Summary tile
+    var total = rows.reduce(function(s,r){ return s+r[1]; }, 0);
+    var tileHtml = '<div style="display:flex;gap:12px;margin-bottom:16px;flex-wrap:wrap">'
+      + '<div style="background:var(--ac);color:#fff;border-radius:10px;padding:14px 24px;min-width:140px">'
+      + '<div style="font-size:11px;font-weight:700;opacity:.75;text-transform:uppercase;letter-spacing:.06em">Total Trips</div>'
+      + '<div style="font-size:28px;font-weight:800;margin-top:4px">'+total+'</div></div>'
+      + '<div style="background:#f0fdf4;border:1.5px solid #bbf7d0;border-radius:10px;padding:14px 24px;min-width:140px">'
+      + '<div style="font-size:11px;font-weight:700;color:#166534;text-transform:uppercase;letter-spacing:.06em">Months Active</div>'
+      + '<div style="font-size:28px;font-weight:800;color:#166534;margin-top:4px">'+keys.length+'</div></div>'
+      + '</div>';
+    var wrap = document.getElementById('rpt-monthly-wrap');
+    if (wrap) wrap.innerHTML = tileHtml + _rptTbl(
+      ['Month', {label:'Trips Loaded',align:'right'}],
+      rows, 'No trips found');
+  }
+
+  if (tab === 'drivers') {
+    var driverMap = {};
+    trips.forEach(function(t) {
+      var d = t.driver||'—';
+      if (!driverMap[d]) driverMap[d] = {trips:0};
+      driverMap[d].trips++;
+    });
+    // Get all unique drivers from both trips and FUEL_LOSS/DEDUCTIONS for shortage
+    var allDrivers = Object.keys(driverMap);
+    var rows = allDrivers.sort().map(function(d) {
+      var owed = _rptShortOwedForDriver(d);
+      return [
+        d,
+        {val:driverMap[d].trips, color:''},
+        {val:'TZS '+fmt(owed), color: owed>0?'#b91c1c':'#166534'}
+      ];
+    });
+    var wrap = document.getElementById('rpt-drivers-wrap');
+    if (wrap) wrap.innerHTML = _rptTbl(
+      ['Driver', {label:'Trips',align:'right'}, {label:'Shortage Owed',align:'right'}],
+      rows, 'No driver data');
+  }
+
+  if (tab === 'trucks') {
+    var truckMap = {};
+    trips.forEach(function(t) {
+      var h = t.horse||'—';
+      truckMap[h] = (truckMap[h]||0) + 1;
+    });
+    var rows = Object.keys(truckMap).sort().map(function(h) {
+      return [h, {val:truckMap[h], color:''}];
+    });
+    // Sort by trips desc
+    rows.sort(function(a,b){ return b[1].val - a[1].val; });
+    var wrap = document.getElementById('rpt-trucks-wrap');
+    if (wrap) wrap.innerHTML = _rptTbl(
+      ['Truck (Horse)', {label:'Trips',align:'right'}],
+      rows, 'No truck data');
+  }
+
+  if (tab === 'clients-trips') {
+    var clientMap = {};
+    trips.forEach(function(t) {
+      var rel = (RELEASES||[]).find(function(r){ return r.releaseNo===t.releaseNo; });
+      var c = rel ? (rel.customer||t.customer||'—') : (t.customer||'—');
+      clientMap[c] = (clientMap[c]||0) + 1;
+    });
+    var rows = Object.keys(clientMap).sort().map(function(c) {
+      return [c, {val:clientMap[c], color:''}];
+    });
+    rows.sort(function(a,b){ return b[1].val - a[1].val; });
+    var wrap = document.getElementById('rpt-clients-trips-wrap');
+    if (wrap) wrap.innerHTML = _rptTbl(
+      ['Client', {label:'Trips',align:'right'}],
+      rows, 'No client data');
+  }
+
+  if (tab === 'clients-short') {
+    var csMap = {};
+    (FUEL_LOSS||[]).forEach(function(f) {
+      var trip = (TRIPS||[]).find(function(t){ return t.id===f.tripId||t.tripNo===f.tripNo; });
+      var rel  = trip ? (RELEASES||[]).find(function(r){ return r.releaseNo===trip.releaseNo; }) : null;
+      var c = rel ? (rel.customer||trip&&trip.customer||'—') : (trip&&trip.customer||'—');
+      csMap[c] = (csMap[c]||0) + parseFloat(f.driverOwsTZS||0);
+    });
+    var rows = Object.keys(csMap).sort().map(function(c) {
+      var v = csMap[c];
+      return [c, {val:'TZS '+fmt(v), color: v>0?'#b91c1c':'#166534'}];
+    });
+    rows.sort(function(a,b){ return csMap[b[0]] - csMap[a[0]]; });
+    var wrap = document.getElementById('rpt-clients-short-wrap');
+    if (wrap) wrap.innerHTML = _rptTbl(
+      ['Client', {label:'Total Shortage (TZS)',align:'right'}],
+      rows, 'No shortage data');
+  }
 }
 
 // ── MAIN COMBINED RENDER ──────────────────────────────────────────

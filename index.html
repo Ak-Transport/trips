@@ -2153,6 +2153,9 @@ td,td *{font-size:13px!important;font-family:'Inter',sans-serif!important}
           <button class="stab-btn" onclick="switchRptTab('clients-short')">&#9888; Clients (Shortages)</button>
         </div>
       </div>
+      <div id="rpt-data-notice" style="display:none;margin:6px 22px 0;padding:7px 14px;background:#fef9c3;border:1.5px solid #fde047;border-radius:8px;font-size:12px;color:#854d0e;font-weight:600;flex-shrink:0">
+        &#9432; 2026 data starts from <strong>August 2026</strong> — trips before August are excluded.
+      </div>
       <div id="rpt-tab-monthly" style="flex:1;overflow:auto;padding:16px 22px 20px">
         <div id="rpt-monthly-wrap"></div>
       </div>
@@ -6425,7 +6428,11 @@ function renderDriverSummary() {
   // Compute every driver's summary row once, regardless of filters —
   // export/selection reads from this, filters below just decide what's shown.
   _dsumRows = drivers.map(function(driver){
-    var shortRecs=FUEL_LOSS.filter(function(f){return f.driver===driver;});
+    var shortRecs=FUEL_LOSS.filter(function(f){
+      var trip=(TRIPS||[]).find(function(t){return t.id===f.tripId||t.tripNo===f.tripNo;});
+      var actualDriver = trip ? trip.driver : f.driver;
+      return actualDriver === driver;
+    });
     var autoRecs=TRIPS.filter(function(t){
       return t.driver===driver&&(t.status||'').toUpperCase()==='COMPLETED'&&parseFloat(t.excessLoss||0)>0
           &&!FUEL_LOSS.some(function(f){return f.tripId===t.id||f.tripNo===t.tripNo;});
@@ -6796,7 +6803,12 @@ function dsumExportPDF(mode) {
 }
 
 function openDriverStatement(driver) {
-  var shortRecs=FUEL_LOSS.filter(function(f){return f.driver===driver;});
+  var shortRecs=FUEL_LOSS.filter(function(f){
+    // Always resolve the actual driver from the linked trip — the stored driver name may be stale
+    var trip=(TRIPS||[]).find(function(t){return t.id===f.tripId||t.tripNo===f.tripNo;});
+    var actualDriver = trip ? trip.driver : f.driver;
+    return actualDriver === driver;
+  });
   var autoRecs=TRIPS.filter(function(t){
     return t.driver===driver&&(t.status||'').toUpperCase()==='COMPLETED'&&parseFloat(t.excessLoss||0)>0
         &&!FUEL_LOSS.some(function(f){return f.tripId===t.id||f.tripNo===t.tripNo;});
@@ -13192,6 +13204,10 @@ function switchCombinedTab(tab) {
 
 // ── REPORTS DASHBOARD ────────────────────────────────────────────
 var _rptCurrentTab = 'monthly';
+var _rptDriverSort = {col:'trips', dir:'desc'};
+var _rptTruckSort = {col:'trips', dir:'desc'};
+var _rptClientTripSort = {col:'trips', dir:'desc'};
+var _rptMonthlySort = {col:'month', dir:'asc'};
 
 function switchRptTab(tab) {
   _rptCurrentTab = tab;
@@ -13204,6 +13220,218 @@ function switchRptTab(tab) {
     if (el) el.classList.toggle('hidden', t !== tab);
   });
   _renderRptTab(tab);
+}
+
+function _rptDriverSortBy(col) {
+  if (_rptDriverSort.col === col) {
+    _rptDriverSort.dir = _rptDriverSort.dir === 'asc' ? 'desc' : 'asc';
+  } else {
+    _rptDriverSort.col = col;
+    _rptDriverSort.dir = 'desc';
+  }
+  _renderRptTab('drivers');
+}
+
+function _rptDriverArrow(col) {
+  if (_rptDriverSort.col !== col) return '<span style="opacity:.3">⇅</span>';
+  return _rptDriverSort.dir === 'asc' ? '▲' : '▼';
+}
+
+function _rptTruckSortBy(col) {
+  if (_rptTruckSort.col === col) {
+    _rptTruckSort.dir = _rptTruckSort.dir === 'asc' ? 'desc' : 'asc';
+  } else {
+    _rptTruckSort.col = col;
+    _rptTruckSort.dir = 'desc';
+  }
+  _renderRptTab('trucks');
+}
+
+function _rptClientTripSortBy(col) {
+  if (_rptClientTripSort.col === col) {
+    _rptClientTripSort.dir = _rptClientTripSort.dir === 'asc' ? 'desc' : 'asc';
+  } else {
+    _rptClientTripSort.col = col;
+    _rptClientTripSort.dir = 'desc';
+  }
+  _renderRptTab('clients-trips');
+}
+
+function _rptMonthlySortBy(col) {
+  if (_rptMonthlySort.col === col) {
+    _rptMonthlySort.dir = _rptMonthlySort.dir === 'asc' ? 'desc' : 'asc';
+  } else {
+    _rptMonthlySort.col = col;
+    _rptMonthlySort.dir = 'desc';
+  }
+  _renderRptTab('monthly');
+}
+
+function _rptToggleAllDrivers(cb) {
+  document.querySelectorAll('.rpt-drv-cb').forEach(function(c){ c.checked = cb.checked; });
+  _rptUpdateDriverExportBtn();
+}
+
+function _rptUpdateDriverExportBtn() {
+  var n = document.querySelectorAll('.rpt-drv-cb:checked').length;
+  var btn = document.getElementById('rpt-drv-export-btn');
+  if (btn) { btn.style.display = n > 0 ? 'inline-flex' : 'none'; btn.textContent = '📄 Export PDF (' + n + ')'; }
+}
+
+function _rptExportDriversPDF() {
+  var checked = Array.from(document.querySelectorAll('.rpt-drv-cb:checked')).map(function(c){ return c.value; });
+  if (!checked.length) { toast('Select at least one driver', 'er'); return; }
+  var rows = _rptDriverRows().filter(function(r){ return checked.indexOf(r.driver) !== -1; });
+  var company = (typeof SETTINGS !== 'undefined' && SETTINGS.companyName) || 'AK TRANSPORT (T) LIMITED';
+  var year = (document.getElementById('rpt-year-filter')||{}).value || 'All Years';
+  var fmt  = function(n){ return Number(n).toLocaleString(); };
+  var thS  = 'padding:7px 10px;font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:#fff;background:#0a2d6e;border-right:1px solid #1a4080;white-space:nowrap';
+  var rowsHtml = rows.map(function(r, i) {
+    var bg = i%2===0?'#fff':'#ebebeb';
+    var tdS = 'padding:6px 10px;font-size:10px;border-bottom:1px solid #ccc;border-right:1px solid #ccc;background:'+bg+';color:#000;';
+    return '<tr>'
+      +'<td style="'+tdS+'text-align:center;color:#666;font-size:9px">'+(i+1)+'</td>'
+      +'<td style="'+tdS+'font-weight:700">'+esc(r.driver)+'</td>'
+      +'<td style="'+tdS+'text-align:right">'+r.trips+'</td>'
+      +'<td style="'+tdS+'font-size:9px;color:#555">'+r.destText+'</td>'
+      +'<td style="'+tdS+'font-size:9px;color:#555">'+r.prodText+'</td>'
+      +'<td style="'+tdS+'text-align:right;color:'+(r.shortLtr>0?'#b91c1c':'#166534')+'">'+fmt(r.shortLtr)+' L</td>'
+      +'<td style="'+tdS+'text-align:right;font-weight:700;color:'+(r.shortAmt>0?'#b91c1c':'#166534')+'">TZS '+fmt(r.shortAmt)+'</td>'
+      +'</tr>';
+  }).join('');
+  var html = '<!DOCTYPE html><html><head><meta charset="utf-8"><title>Driver Report</title>'
+    +'<style>body{font-family:Arial,sans-serif;margin:20px}table{width:100%;border-collapse:collapse}@media print{body{margin:10px}}</style>'
+    +'</head><body>'
+    +'<div style="text-align:center;margin-bottom:16px">'
+    +'<div style="font-size:16px;font-weight:800;color:#0a2d6e">'+esc(company)+'</div>'
+    +'<div style="font-size:13px;font-weight:700;margin-top:4px">Driver Performance Report — '+esc(year)+'</div>'
+    +'<div style="font-size:10px;color:#666;margin-top:2px">Printed: '+new Date().toLocaleDateString('en-GB',{day:'2-digit',month:'long',year:'numeric'})+'</div>'
+    +'</div>'
+    +'<table><thead><tr>'
+    +'<th style="'+thS+';width:30px">#</th>'
+    +'<th style="'+thS+'">Driver</th>'
+    +'<th style="'+thS+';text-align:right">Trips</th>'
+    +'<th style="'+thS+'">Destinations</th>'
+    +'<th style="'+thS+'">Products</th>'
+    +'<th style="'+thS+';text-align:right">Short (Ltrs)</th>'
+    +'<th style="'+thS+';text-align:right">Amount Owed</th>'
+    +'</tr></thead><tbody>'+rowsHtml+'</tbody></table>'
+    +'</body></html>';
+  var w = window.open('','_blank','width=900,height=650');
+  if (w) { w.document.write(html); w.document.close(); w.focus(); w.print(); }
+}
+
+function _rptToggleAllTrucks(cb) {
+  document.querySelectorAll('.rpt-trk-cb').forEach(function(c){ c.checked = cb.checked; });
+  _rptUpdateTruckExportBtn();
+}
+
+function _rptUpdateTruckExportBtn() {
+  var n = document.querySelectorAll('.rpt-trk-cb:checked').length;
+  var pBtn = document.getElementById('rpt-trk-export-pdf-btn');
+  var xBtn = document.getElementById('rpt-trk-export-xls-btn');
+  if (pBtn) { pBtn.style.display = n > 0 ? 'inline-flex' : 'none'; pBtn.textContent = '📄 Export PDF (' + n + ')'; }
+  if (xBtn) { xBtn.style.display = n > 0 ? 'inline-flex' : 'none'; xBtn.textContent = '📊 Export Excel (' + n + ')'; }
+}
+
+function _rptExportTrucksPDF() {
+  var checked = Array.from(document.querySelectorAll('.rpt-trk-cb:checked')).map(function(c){ return c.value; });
+  if (!checked.length) { toast('Select at least one truck', 'er'); return; }
+  var trips = _rptFilteredTrips();
+  var truckMap = {};
+  trips.forEach(function(t) {
+    if ((t.status||'').toUpperCase() !== 'COMPLETED') return;
+    var h = t.horse||'—';
+    if (!truckMap[h]) truckMap[h] = {trips:0, dests:{}};
+    truckMap[h].trips++;
+    var dest = _rptTitleCase(t.destination||'—');
+    truckMap[h].dests[dest] = (truckMap[h].dests[dest]||0) + 1;
+  });
+  var rows = checked.filter(function(h){ return truckMap[h]; }).map(function(h) {
+    var tm = truckMap[h];
+    var destText = Object.keys(tm.dests).sort(function(a,b){ return tm.dests[b]-tm.dests[a]; })
+      .map(function(d){ return tm.dests[d]+' '+d; }).join(', ');
+    return {horse:h, trips:tm.trips, destText:destText};
+  });
+  var company = (typeof SETTINGS !== 'undefined' && SETTINGS.companyName) || 'AK TRANSPORT (T) LIMITED';
+  var year = (document.getElementById('rpt-year-filter')||{}).value || 'All Years';
+  var thS = 'padding:7px 10px;font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:#fff;background:#0a2d6e;border-right:1px solid #1a4080;white-space:nowrap';
+  var rowsHtml = rows.map(function(r, i) {
+    var bg = i%2===0?'#fff':'#ebebeb';
+    var tdS = 'padding:6px 10px;font-size:10px;border-bottom:1px solid #ccc;border-right:1px solid #ccc;background:'+bg+';color:#000;';
+    return '<tr>'
+      +'<td style="'+tdS+'text-align:center;color:#666;font-size:9px">'+(i+1)+'</td>'
+      +'<td style="'+tdS+'font-weight:700">'+esc(r.horse)+'</td>'
+      +'<td style="'+tdS+'text-align:right">'+r.trips+'</td>'
+      +'<td style="'+tdS+'font-size:9px;color:#555">'+esc(r.destText)+'</td>'
+      +'</tr>';
+  }).join('');
+  var html = '<!DOCTYPE html><html><head><meta charset="utf-8"><title>Truck Report</title>'
+    +'<style>body{font-family:Arial,sans-serif;margin:20px}table{width:100%;border-collapse:collapse}@media print{body{margin:10px}}</style>'
+    +'</head><body>'
+    +'<div style="text-align:center;margin-bottom:16px">'
+    +'<div style="font-size:16px;font-weight:800;color:#0a2d6e">'+esc(company)+'</div>'
+    +'<div style="font-size:13px;font-weight:700;margin-top:4px">Truck Performance Report — '+esc(year)+'</div>'
+    +'<div style="font-size:10px;color:#666;margin-top:2px">Printed: '+new Date().toLocaleDateString('en-GB',{day:'2-digit',month:'long',year:'numeric'})+'</div>'
+    +'</div>'
+    +'<table><thead><tr>'
+    +'<th style="'+thS+';width:30px">#</th>'
+    +'<th style="'+thS+'">Truck (Horse)</th>'
+    +'<th style="'+thS+';text-align:right">Trips</th>'
+    +'<th style="'+thS+'">Destinations</th>'
+    +'</tr></thead><tbody>'+rowsHtml+'</tbody></table>'
+    +'</body></html>';
+  var w = window.open('','_blank','width=900,height=650');
+  if (w) { w.document.write(html); w.document.close(); w.focus(); w.print(); }
+}
+
+function _rptExportTrucksExcel() {
+  var checked = Array.from(document.querySelectorAll('.rpt-trk-cb:checked')).map(function(c){ return c.value; });
+  if (!checked.length) { toast('Select at least one truck', 'er'); return; }
+  var trips = _rptFilteredTrips();
+  var truckMap = {};
+  trips.forEach(function(t) {
+    if ((t.status||'').toUpperCase() !== 'COMPLETED') return;
+    var h = t.horse||'—';
+    if (!truckMap[h]) truckMap[h] = {trips:0, dests:{}};
+    truckMap[h].trips++;
+    var dest = _rptTitleCase(t.destination||'—');
+    truckMap[h].dests[dest] = (truckMap[h].dests[dest]||0) + 1;
+  });
+  var company = (typeof SETTINGS !== 'undefined' && SETTINGS.companyName) || 'AK TRANSPORT (T) LIMITED';
+  var year = (document.getElementById('rpt-year-filter')||{}).value || 'All Years';
+  var rows = checked.filter(function(h){ return truckMap[h]; }).map(function(h) {
+    var tm = truckMap[h];
+    var destText = Object.keys(tm.dests).sort(function(a,b){ return tm.dests[b]-tm.dests[a]; })
+      .map(function(d){ return tm.dests[d]+' '+d; }).join(', ');
+    return {horse:h, trips:tm.trips, destText:destText};
+  });
+  // Build XML-based Excel
+  var xmlRows = rows.map(function(r, i) {
+    return '<Row>'
+      +'<Cell><Data ss:Type="Number">'+(i+1)+'</Data></Cell>'
+      +'<Cell><Data ss:Type="String">'+r.horse.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')+'</Data></Cell>'
+      +'<Cell><Data ss:Type="Number">'+r.trips+'</Data></Cell>'
+      +'<Cell><Data ss:Type="String">'+r.destText.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')+'</Data></Cell>'
+      +'</Row>';
+  }).join('');
+  var xml = '<?xml version="1.0"?><?mso-application progid="Excel.Sheet"?>'
+    +'<Workbook xmlns="urn:schemas-microsoft-com:office:spreadsheet" xmlns:ss="urn:schemas-microsoft-com:office:spreadsheet">'
+    +'<Worksheet ss:Name="Trucks"><Table>'
+    +'<Row><Cell ss:MergeAcross="3"><Data ss:Type="String">'+company+' — Truck Report ('+year+')</Data></Cell></Row>'
+    +'<Row>'
+    +'<Cell><Data ss:Type="String">#</Data></Cell>'
+    +'<Cell><Data ss:Type="String">Truck (Horse)</Data></Cell>'
+    +'<Cell><Data ss:Type="String">Trips</Data></Cell>'
+    +'<Cell><Data ss:Type="String">Destinations</Data></Cell>'
+    +'</Row>'
+    +xmlRows
+    +'</Table></Worksheet></Workbook>';
+  var blob = new Blob([xml], {type:'application/vnd.ms-excel'});
+  var a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'Truck_Report_'+year+'.xls';
+  a.click();
 }
 
 function renderReports() {
@@ -13229,17 +13457,41 @@ function renderReports() {
 
 function _rptFilteredTrips() {
   var year = (document.getElementById('rpt-year-filter')||{}).value||'';
+  // Show notice when 2026 or All Years is selected (Aug 2026 cutoff applies)
+  var notice = document.getElementById('rpt-data-notice');
+  if (notice) notice.style.display = (!year || year==='2026') ? 'block' : 'none';
   return (TRIPS||[]).filter(function(t) {
-    if (!year) return true;
-    return (t.loadingDate||'').startsWith(year);
+    var d = t.loadingDate||'';
+    if (!d) return false;
+    // Always exclude anything before August 2026
+    if (d < '2026-08') return false;
+    // If a specific year is selected, further filter to that year
+    if (year) return d.startsWith(year);
+    return true;
   });
 }
 
 function _rptShortOwedForDriver(driver) {
-  // Sum from FUEL_LOSS
-  var shortOwed = (FUEL_LOSS||[]).filter(function(f){ return f.driver===driver; })
-    .reduce(function(s,f){ return s+parseFloat(f.driverOwsTZS||0); }, 0);
-  // Add Fuel Shortage DEDUCTIONS
+  // Mirror _dsumRows calculation exactly
+  var shortRecs = (FUEL_LOSS||[]).filter(function(f){
+    var trip=(TRIPS||[]).find(function(t){return t.id===f.tripId||t.tripNo===f.tripNo;});
+    var actualDriver = trip ? trip.driver : f.driver;
+    return actualDriver === driver;
+  });
+  // Auto-recs: COMPLETED trips with excessLoss but no FUEL_LOSS record
+  var autoRecs = (TRIPS||[]).filter(function(t){
+    return t.driver===driver && (t.status||'').toUpperCase()==='COMPLETED' && parseFloat(t.excessLoss||0)>0
+        && !(FUEL_LOSS||[]).some(function(f){return f.tripId===t.id||f.tripNo===t.tripNo;});
+  });
+  // Opening balance
+  var openingBalRec = typeof DRIVER_OPENING_BALANCES!=='undefined'
+    ? DRIVER_OPENING_BALANCES.find(function(o){return o.driver===driver;}) : null;
+  var openingBal = openingBalRec ? parseFloat(openingBalRec.openingBalanceTZS||0) : 0;
+  // Base shortage owed
+  var shortOwed = shortRecs.reduce(function(s,f){ return s+parseFloat(f.driverOwsTZS||0); }, 0)
+    + autoRecs.reduce(function(s,t){ return s+Math.round(parseFloat(t.excessLoss||0)*parseFloat(t.ratePerLitre||SETTINGS.fuelLossRate||SETTINGS.fuelPrice||3200)); }, 0)
+    + openingBal;
+  // Add Fuel Shortage DEDUCTIONS (merged into shortage side)
   if (typeof DEDUCTIONS !== 'undefined') {
     DEDUCTIONS.forEach(function(d) {
       if ((d.type||'')==='Fuel Shortage' && d.driver===driver) {
@@ -13247,12 +13499,12 @@ function _rptShortOwedForDriver(driver) {
       }
     });
   }
-  // Subtract SHORTAGE_PMTS approved payments
-  var obKey = 'ob-fs-' + driver.replace(/\s+/g,'_');
+  // Subtract approved SHORTAGE_PMTS (trip-based + OB)
+  var obFuelLossId = openingBalRec ? ('ob-' + openingBalRec.id) : ('ob-fs-' + driver.replace(/\s+/g,'_'));
   (SHORTAGE_PMTS||[]).forEach(function(p) {
     if ((p.status||'').toUpperCase()==='APPROVED') {
-      var isTripPmt = (FUEL_LOSS||[]).some(function(f){ return f.id===p.fuelLossId && f.driver===driver; });
-      var isOBPmt = p.fuelLossId === obKey;
+      var isTripPmt = shortRecs.some(function(f){ return f.id===p.fuelLossId; });
+      var isOBPmt   = p.fuelLossId === obFuelLossId;
       if (isTripPmt || isOBPmt) shortOwed -= parseFloat(p.amountTZS||0);
     }
   });
@@ -13293,6 +13545,53 @@ function _rptTbl(headers, rows, emptyMsg) {
   return '<table style="width:100%;border-collapse:collapse"><thead><tr>'+hHtml+'</tr></thead><tbody>'+bHtml+'</tbody></table>';
 }
 
+function _rptTitleCase(str) {
+  if (!str || str === '—') return str;
+  return str.charAt(0).toUpperCase() + str.slice(1).toLowerCase();
+}
+
+function _rptDriverRows() {
+  var trips = _rptFilteredTrips();
+  var fmt   = function(n){ return Number(n).toLocaleString(); };
+  var driverMap = {};
+  trips.forEach(function(t) {
+    var d = t.driver||'—';
+    if (!driverMap[d]) driverMap[d] = {trips:0, dests:{}, prods:{}};
+    // Only count COMPLETED trips for trips, destinations, products
+    if ((t.status||'').toUpperCase() !== 'COMPLETED') return;
+    driverMap[d].trips++;
+    var dest = _rptTitleCase(t.destination||'—');
+    driverMap[d].dests[dest] = (driverMap[d].dests[dest]||0) + 1;
+    var prod = _rptTitleCase(t.product||'—');
+    driverMap[d].prods[prod] = (driverMap[d].prods[prod]||0) + 1;
+  });
+  var rows = Object.keys(driverMap).filter(function(d){ return driverMap[d].trips > 0; }).map(function(d) {
+    var dm = driverMap[d];
+    // Destinations summary: "2 Lusaka, 1 Lubumbashi"
+    var destText = Object.keys(dm.dests).sort(function(a,b){ return dm.dests[b]-dm.dests[a]; })
+      .map(function(dest){ return dm.dests[dest]+' '+dest; }).join(', ');
+    // Products summary: "2 Petrol, 1 Diesel"
+    var prodText = Object.keys(dm.prods).sort(function(a,b){ return dm.prods[b]-dm.prods[a]; })
+      .map(function(p){ return dm.prods[p]+' '+p; }).join(', ');
+    // Shortage litres: sum excessLoss directly from COMPLETED trips for this driver
+    var shortLtr = (TRIPS||[]).filter(function(t){
+      return t.driver===d && (t.status||'').toUpperCase()==='COMPLETED' && parseFloat(t.excessLoss||0)>0;
+    }).reduce(function(s,t){ return s+parseFloat(t.excessLoss||0); }, 0);
+    var shortAmt = _rptShortOwedForDriver(d);
+    return { driver:d, trips:dm.trips, destText:destText, prodText:prodText, shortLtr:Math.round(shortLtr*100)/100, shortAmt:shortAmt };
+  });
+  // Sort
+  var col = _rptDriverSort.col, dir = _rptDriverSort.dir === 'asc' ? 1 : -1;
+  rows.sort(function(a,b){
+    if (col==='driver') return dir * a.driver.localeCompare(b.driver);
+    if (col==='trips')  return dir * (a.trips - b.trips);
+    if (col==='shortLtr') return dir * (a.shortLtr - b.shortLtr);
+    if (col==='shortAmt') return dir * (a.shortAmt - b.shortAmt);
+    return 0;
+  });
+  return rows;
+}
+
 function _renderRptTab(tab) {
   var trips = _rptFilteredTrips();
   var fmt   = function(n){ return Number(n).toLocaleString(); };
@@ -13304,16 +13603,36 @@ function _renderRptTab(tab) {
       var d = t.loadingDate||'';
       if (!d) return;
       var key = d.substring(0,7); // YYYY-MM
-      months[key] = (months[key]||0) + 1;
+      if (!months[key]) months[key] = {trips:0, clients:{}, dests:{}, prods:{}};
+      months[key].trips++;
+      var rel = (RELEASES||[]).find(function(r){ return r.releaseNo===t.releaseNo; });
+      var cust = rel ? (rel.customer||t.customer||'—') : (t.customer||'—');
+      months[key].clients[cust] = (months[key].clients[cust]||0) + 1;
+      var dest = _rptTitleCase(t.destination||'—');
+      months[key].dests[dest] = (months[key].dests[dest]||0) + 1;
+      var prod = _rptTitleCase(t.product||'—');
+      months[key].prods[prod] = (months[key].prods[prod]||0) + 1;
     });
     var keys = Object.keys(months).sort();
-    var rows = keys.map(function(k) {
+    // Sort state
+    var col = _rptMonthlySort.col, dir = _rptMonthlySort.dir === 'asc' ? 1 : -1;
+    var monthlyRows = keys.map(function(k) {
       var parts = k.split('-');
       var label = MONTH_NAMES[parseInt(parts[1],10)-1] + ' ' + parts[0];
-      return [{val:label,color:''}, months[k]];
+      var m = months[k];
+      var clientText = Object.keys(m.clients).sort(function(a,b){ return m.clients[b]-m.clients[a]; })
+        .map(function(c){ return m.clients[c]+' '+c; }).join(', ');
+      var destText = Object.keys(m.dests).sort(function(a,b){ return m.dests[b]-m.dests[a]; })
+        .map(function(d){ return m.dests[d]+' '+d; }).join(', ');
+      var prodText = Object.keys(m.prods).sort(function(a,b){ return m.prods[b]-m.prods[a]; })
+        .map(function(p){ return m.prods[p]+' '+p; }).join(', ');
+      return {key:k, label:label, trips:m.trips, clientText:clientText, destText:destText, prodText:prodText};
     });
+    if (col==='trips') monthlyRows.sort(function(a,b){ return dir*(a.trips-b.trips); });
+    else monthlyRows.sort(function(a,b){ return dir*a.key.localeCompare(b.key); });
+
     // Summary tile
-    var total = rows.reduce(function(s,r){ return s+r[1]; }, 0);
+    var total = monthlyRows.reduce(function(s,r){ return s+r.trips; }, 0);
     var tileHtml = '<div style="display:flex;gap:12px;margin-bottom:16px;flex-wrap:wrap">'
       + '<div style="background:var(--ac);color:#fff;border-radius:10px;padding:14px 24px;min-width:140px">'
       + '<div style="font-size:11px;font-weight:700;opacity:.75;text-transform:uppercase;letter-spacing:.06em">Total Trips</div>'
@@ -13323,49 +13642,152 @@ function _renderRptTab(tab) {
       + '<div style="font-size:28px;font-weight:800;color:#166534;margin-top:4px">'+keys.length+'</div></div>'
       + '</div>';
     var wrap = document.getElementById('rpt-monthly-wrap');
-    if (wrap) wrap.innerHTML = tileHtml + _rptTbl(
-      ['Month', {label:'Trips Loaded',align:'right'}],
-      rows, 'No trips found');
+    if (!wrap) return;
+    if (!monthlyRows.length) { wrap.innerHTML = tileHtml + '<div class="emptystate"><div style="font-size:40px">📊</div><h3>No trips found</h3></div>'; return; }
+    var thSM = 'padding:8px 12px;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:rgba(255,255,255,.9);background:var(--ac);white-space:nowrap;cursor:pointer;user-select:none';
+    var thRM = thSM+';text-align:right';
+    function _thMonth(col2, label2, align2) {
+      var s = align2==='right' ? thRM : thSM;
+      var arr = _rptMonthlySort.col===col2 ? (_rptMonthlySort.dir==='asc'?'▲':'▼') : '<span style="opacity:.3">⇅</span>';
+      return '<th style="'+s+'" onclick="_rptMonthlySortBy(\''+col2+'\')"><div style="display:inline-flex;align-items:center;gap:5px">'+(align2==='right'?'<span>'+arr+'</span>':'')+label2+(align2!=='right'?'<span>'+arr+'</span>':'')+'</div></th>';
+    }
+    var bodyHtmlM = monthlyRows.map(function(r, idx) {
+      var bg = idx%2===0?'':'background:#fafbfc;';
+      var tdS = 'padding:9px 12px;font-size:12px;border-bottom:1px solid #f0f0f4;';
+      return '<tr style="'+bg+'">'
+        +'<td style="'+tdS+'font-weight:600">'+esc(r.label)+'</td>'
+        +'<td style="'+tdS+'text-align:right;font-family:monospace">'+r.trips+'</td>'
+        +'<td style="'+tdS+'font-size:11px;color:var(--t2,#6b7280)">'+esc(r.clientText||'—')+'</td>'
+        +'<td style="'+tdS+'font-size:11px;color:var(--t2,#6b7280)">'+esc(r.destText||'—')+'</td>'
+        +'<td style="'+tdS+'font-size:11px;color:var(--t2,#6b7280)">'+esc(r.prodText||'—')+'</td>'
+        +'</tr>';
+    }).join('');
+    wrap.innerHTML = tileHtml + '<table style="width:100%;border-collapse:collapse"><thead><tr>'
+      +_thMonth('month','Month','left')
+      +_thMonth('trips','Trips','right')
+      +'<th style="'+thSM+'">Clients</th>'
+      +'<th style="'+thSM+'">Destinations</th>'
+      +'<th style="'+thSM+'">Products</th>'
+      +'</tr></thead><tbody>'+bodyHtmlM+'</tbody></table>';
   }
 
   if (tab === 'drivers') {
-    var driverMap = {};
-    trips.forEach(function(t) {
-      var d = t.driver||'—';
-      if (!driverMap[d]) driverMap[d] = {trips:0};
-      driverMap[d].trips++;
-    });
-    // Get all unique drivers from both trips and FUEL_LOSS/DEDUCTIONS for shortage
-    var allDrivers = Object.keys(driverMap);
-    var rows = allDrivers.sort().map(function(d) {
-      var owed = _rptShortOwedForDriver(d);
-      return [
-        d,
-        {val:driverMap[d].trips, color:''},
-        {val:'TZS '+fmt(owed), color: owed>0?'#b91c1c':'#166534'}
-      ];
-    });
+    var dRows = _rptDriverRows();
     var wrap = document.getElementById('rpt-drivers-wrap');
-    if (wrap) wrap.innerHTML = _rptTbl(
-      ['Driver', {label:'Trips',align:'right'}, {label:'Shortage Owed',align:'right'}],
-      rows, 'No driver data');
+    if (!wrap) return;
+    if (!dRows.length) { wrap.innerHTML = '<div class="emptystate"><div style="font-size:40px">📊</div><h3>No driver data</h3></div>'; return; }
+
+    var thS = 'padding:8px 12px;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:rgba(255,255,255,.9);background:var(--ac);white-space:nowrap;cursor:pointer;user-select:none';
+    var thR = thS + ';text-align:right';
+
+    function _thBtn(col, label, align) {
+      var s = align==='right' ? thR : thS;
+      return '<th style="'+s+'" onclick="_rptDriverSortBy(\''+col+'\')"><div style="display:inline-flex;align-items:center;gap:5px">'+(align==='right'?'<span>'+_rptDriverArrow(col)+'</span>':'')+label+(align!=='right'?'<span>'+_rptDriverArrow(col)+'</span>':'')+'</div></th>';
+    }
+
+    var bodyHtml = dRows.map(function(r, idx) {
+      var bg = idx%2===0?'':'background:#fafbfc;';
+      var tdS = 'padding:9px 12px;font-size:12px;border-bottom:1px solid #f0f0f4;';
+      return '<tr style="'+bg+'">'
+        +'<td style="'+tdS+'width:36px"><input type="checkbox" class="rpt-drv-cb" value="'+esc(r.driver)+'" onchange="_rptUpdateDriverExportBtn()"></td>'
+        +'<td style="'+tdS+'font-weight:600;color:var(--ac)">'+esc(r.driver)+'</td>'
+        +'<td style="'+tdS+'text-align:right;font-family:monospace">'+r.trips+'</td>'
+        +'<td style="'+tdS+'font-size:11px;color:var(--t2,#6b7280)">'+esc(r.destText||'—')+'</td>'
+        +'<td style="'+tdS+'font-size:11px;color:var(--t2,#6b7280)">'+esc(r.prodText||'—')+'</td>'
+        +'<td style="'+tdS+'text-align:right;font-family:monospace;color:'+(r.shortLtr>0?'#b91c1c':'#166534')+'">'+fmt(r.shortLtr)+' L</td>'
+        +'<td style="'+tdS+'text-align:right;font-family:monospace;font-weight:700;color:'+(r.shortAmt>0?'#b91c1c':'#166534')+'">TZS '+fmt(r.shortAmt)+'</td>'
+        +'</tr>';
+    }).join('');
+
+    var drvSearch = (document.getElementById('rpt-drv-search')||{}).value||'';
+    var dRowsFiltered = drvSearch ? dRows.filter(function(r){ return r.driver.toLowerCase().indexOf(drvSearch.toLowerCase()) !== -1; }) : dRows;
+    var bodyHtmlFiltered = dRowsFiltered.map(function(r, idx) {
+      var bg = idx%2===0?'':'background:#fafbfc;';
+      var tdS = 'padding:9px 12px;font-size:12px;border-bottom:1px solid #f0f0f4;';
+      return '<tr style="'+bg+'">'
+        +'<td style="'+tdS+'width:36px"><input type="checkbox" class="rpt-drv-cb" value="'+esc(r.driver)+'" onchange="_rptUpdateDriverExportBtn()"></td>'
+        +'<td style="'+tdS+'font-weight:600;color:var(--ac)">'+esc(r.driver)+'</td>'
+        +'<td style="'+tdS+'text-align:right;font-family:monospace">'+r.trips+'</td>'
+        +'<td style="'+tdS+'font-size:11px;color:var(--t2,#6b7280)">'+esc(r.destText||'—')+'</td>'
+        +'<td style="'+tdS+'font-size:11px;color:var(--t2,#6b7280)">'+esc(r.prodText||'—')+'</td>'
+        +'<td style="'+tdS+'text-align:right;font-family:monospace;color:'+(r.shortLtr>0?'#b91c1c':'#166534')+'">'+fmt(r.shortLtr)+' L</td>'
+        +'<td style="'+tdS+'text-align:right;font-family:monospace;font-weight:700;color:'+(r.shortAmt>0?'#b91c1c':'#166534')+'">TZS '+fmt(r.shortAmt)+'</td>'
+        +'</tr>';
+    }).join('');
+    wrap.innerHTML = '<div style="display:flex;align-items:center;gap:10px;margin-bottom:12px;flex-wrap:wrap">'
+      +'<input id="rpt-drv-search" type="text" placeholder="🔍 Search driver…" value="'+esc(drvSearch)+'" oninput="_renderRptTab(\'drivers\');var el=document.getElementById(\'rpt-drv-search\');if(el){el.focus();el.setSelectionRange(el.value.length,el.value.length);}" style="padding:7px 12px;font-size:12px;border:1.5px solid #d1d5db;border-radius:7px;outline:none;width:220px">'
+      +'<button id="rpt-drv-export-btn" class="btn bp" style="display:none;font-size:12px;align-items:center;gap:6px" onclick="_rptExportDriversPDF()">📄 Export PDF</button>'
+      +'</div>'
+      +'<table style="width:100%;border-collapse:collapse">'
+      +'<thead><tr style="background:var(--ac)">'
+      +'<th style="'+thS+';width:36px"><input type="checkbox" id="rpt-drv-cb-all" onchange="_rptToggleAllDrivers(this)"></th>'
+      +'<th style="'+thS+'">Driver</th>'
+      +_thBtn('trips','Trips','right')
+      +'<th style="'+thS+'">Destinations</th>'
+      +'<th style="'+thS+'">Products</th>'
+      +_thBtn('shortLtr','Short (Ltrs)','right')
+      +_thBtn('shortAmt','Amount Owed','right')
+      +'</tr></thead><tbody>'+bodyHtmlFiltered+'</tbody></table>';
   }
 
   if (tab === 'trucks') {
     var truckMap = {};
     trips.forEach(function(t) {
+      if ((t.status||'').toUpperCase() !== 'COMPLETED') return;
       var h = t.horse||'—';
-      truckMap[h] = (truckMap[h]||0) + 1;
+      if (!truckMap[h]) truckMap[h] = {trips:0, dests:{}};
+      truckMap[h].trips++;
+      var dest = _rptTitleCase(t.destination||'—');
+      truckMap[h].dests[dest] = (truckMap[h].dests[dest]||0) + 1;
     });
-    var rows = Object.keys(truckMap).sort().map(function(h) {
-      return [h, {val:truckMap[h], color:''}];
+    var truckRows = Object.keys(truckMap).map(function(h) {
+      var tm = truckMap[h];
+      var destText = Object.keys(tm.dests).sort(function(a,b){ return tm.dests[b]-tm.dests[a]; })
+        .map(function(d){ return tm.dests[d]+' '+d; }).join(', ');
+      return {horse:h, trips:tm.trips, destText:destText};
     });
-    // Sort by trips desc
-    rows.sort(function(a,b){ return b[1].val - a[1].val; });
+    // Sort
+    var col = _rptTruckSort.col, dir = _rptTruckSort.dir === 'asc' ? 1 : -1;
+    truckRows.sort(function(a,b){
+      if (col==='horse') return dir * a.horse.localeCompare(b.horse);
+      if (col==='trips') return dir * (a.trips - b.trips);
+      return 0;
+    });
     var wrap = document.getElementById('rpt-trucks-wrap');
-    if (wrap) wrap.innerHTML = _rptTbl(
-      ['Truck (Horse)', {label:'Trips',align:'right'}],
-      rows, 'No truck data');
+    if (!wrap) return;
+    if (!truckRows.length) { wrap.innerHTML = '<div class="emptystate"><div style="font-size:40px">📊</div><h3>No truck data</h3></div>'; return; }
+    var thS2 = 'padding:8px 12px;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:rgba(255,255,255,.9);background:var(--ac);white-space:nowrap;cursor:pointer;user-select:none';
+    var thR2 = thS2 + ';text-align:right';
+    function _thTruck(col2, label2, align2) {
+      var s = align2==='right' ? thR2 : thS2;
+      var arr = _rptTruckSort.col===col2 ? (_rptTruckSort.dir==='asc'?'▲':'▼') : '<span style="opacity:.3">⇅</span>';
+      return '<th style="'+s+'" onclick="_rptTruckSortBy(\''+col2+'\')"><div style="display:inline-flex;align-items:center;gap:5px">'+(align2==='right'?'<span>'+arr+'</span>':'')+label2+(align2!=='right'?'<span>'+arr+'</span>':'')+'</div></th>';
+    }
+    // Apply search filter
+    var truckSearch = (document.getElementById('rpt-truck-search')||{}).value||'';
+    var truckRowsFiltered = truckSearch ? truckRows.filter(function(r){ return r.horse.toLowerCase().indexOf(truckSearch.toLowerCase()) !== -1; }) : truckRows;
+    var bodyHtml2 = truckRowsFiltered.map(function(r, idx) {
+      var bg = idx%2===0?'':'background:#fafbfc;';
+      var tdS = 'padding:9px 12px;font-size:12px;border-bottom:1px solid #f0f0f4;';
+      return '<tr style="'+bg+'">'
+        +'<td style="'+tdS+'width:36px"><input type="checkbox" class="rpt-trk-cb" value="'+esc(r.horse)+'" onchange="_rptUpdateTruckExportBtn()"></td>'
+        +'<td style="'+tdS+'font-weight:600;color:var(--ac)">'+esc(r.horse)+'</td>'
+        +'<td style="'+tdS+'text-align:right;font-family:monospace">'+r.trips+'</td>'
+        +'<td style="'+tdS+'font-size:11px;color:var(--t2,#6b7280)">'+esc(r.destText||'—')+'</td>'
+        +'</tr>';
+    }).join('');
+    wrap.innerHTML = '<div style="display:flex;align-items:center;gap:10px;margin-bottom:12px;flex-wrap:wrap">'
+      +'<input id="rpt-truck-search" type="text" placeholder="🔍 Search truck…" value="'+esc(truckSearch)+'" oninput="_renderRptTab(\'trucks\');var el=document.getElementById(\'rpt-truck-search\');if(el){el.focus();el.setSelectionRange(el.value.length,el.value.length);}" style="padding:7px 12px;font-size:12px;border:1.5px solid #d1d5db;border-radius:7px;outline:none;width:220px">'
+      +'<button id="rpt-trk-export-pdf-btn" class="btn bp" style="display:none;font-size:12px;align-items:center;gap:6px" onclick="_rptExportTrucksPDF()">📄 Export PDF</button>'
+      +'<button id="rpt-trk-export-xls-btn" class="btn" style="display:none;font-size:12px;align-items:center;gap:6px;background:#166534;color:#fff;border:none" onclick="_rptExportTrucksExcel()">📊 Export Excel</button>'
+      +'</div>'
+      +'<table style="width:100%;border-collapse:collapse">'
+      +'<thead><tr style="background:var(--ac)">'
+      +'<th style="'+thS2+';width:36px"><input type="checkbox" id="rpt-trk-cb-all" onchange="_rptToggleAllTrucks(this)"></th>'
+      +_thTruck('horse','Truck (Horse)','left')
+      +_thTruck('trips','Trips','right')
+      +'<th style="'+thS2+'">Destinations</th>'
+      +'</tr></thead><tbody>'+bodyHtml2+'</tbody></table>';
   }
 
   if (tab === 'clients-trips') {
@@ -13373,35 +13795,91 @@ function _renderRptTab(tab) {
     trips.forEach(function(t) {
       var rel = (RELEASES||[]).find(function(r){ return r.releaseNo===t.releaseNo; });
       var c = rel ? (rel.customer||t.customer||'—') : (t.customer||'—');
-      clientMap[c] = (clientMap[c]||0) + 1;
+      if (!clientMap[c]) clientMap[c] = {trips:0, dests:{}, prods:{}};
+      clientMap[c].trips++;
+      var dest = _rptTitleCase(t.destination||'—');
+      clientMap[c].dests[dest] = (clientMap[c].dests[dest]||0) + 1;
+      var prod = _rptTitleCase(t.product||'—');
+      clientMap[c].prods[prod] = (clientMap[c].prods[prod]||0) + 1;
     });
-    var rows = Object.keys(clientMap).sort().map(function(c) {
-      return [c, {val:clientMap[c], color:''}];
+    var clientRows = Object.keys(clientMap).map(function(c) {
+      var cm = clientMap[c];
+      var destText = Object.keys(cm.dests).sort(function(a,b){ return cm.dests[b]-cm.dests[a]; })
+        .map(function(d){ return cm.dests[d]+' '+d; }).join(', ');
+      var prodText = Object.keys(cm.prods).sort(function(a,b){ return cm.prods[b]-cm.prods[a]; })
+        .map(function(p){ return cm.prods[p]+' '+p; }).join(', ');
+      return {client:c, trips:cm.trips, destText:destText, prodText:prodText};
     });
-    rows.sort(function(a,b){ return b[1].val - a[1].val; });
+    // Sort
+    var col = _rptClientTripSort.col, dir = _rptClientTripSort.dir === 'asc' ? 1 : -1;
+    clientRows.sort(function(a,b){
+      if (col==='client') return dir * a.client.localeCompare(b.client);
+      if (col==='trips')  return dir * (a.trips - b.trips);
+      return 0;
+    });
     var wrap = document.getElementById('rpt-clients-trips-wrap');
-    if (wrap) wrap.innerHTML = _rptTbl(
-      ['Client', {label:'Trips',align:'right'}],
-      rows, 'No client data');
+    if (!wrap) return;
+    if (!clientRows.length) { wrap.innerHTML = '<div class="emptystate"><div style="font-size:40px">📊</div><h3>No client data</h3></div>'; return; }
+    var thSC = 'padding:8px 12px;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:rgba(255,255,255,.9);background:var(--ac);white-space:nowrap;cursor:pointer;user-select:none';
+    var thRC = thSC + ';text-align:right';
+    function _thClient(col2, label2, align2) {
+      var s = align2==='right' ? thRC : thSC;
+      var arr = _rptClientTripSort.col===col2 ? (_rptClientTripSort.dir==='asc'?'▲':'▼') : '<span style="opacity:.3">⇅</span>';
+      return '<th style="'+s+'" onclick="_rptClientTripSortBy(\''+col2+'\')"><div style="display:inline-flex;align-items:center;gap:5px">'+(align2==='right'?'<span>'+arr+'</span>':'')+label2+(align2!=='right'?'<span>'+arr+'</span>':'')+'</div></th>';
+    }
+    var bodyHtmlC = clientRows.map(function(r, idx) {
+      var bg = idx%2===0?'':'background:#fafbfc;';
+      var tdS = 'padding:9px 12px;font-size:12px;border-bottom:1px solid #f0f0f4;';
+      return '<tr style="'+bg+'">'
+        +'<td style="'+tdS+'font-weight:600;color:var(--ac)">'+esc(r.client)+'</td>'
+        +'<td style="'+tdS+'text-align:right;font-family:monospace">'+r.trips+'</td>'
+        +'<td style="'+tdS+'font-size:11px;color:var(--t2,#6b7280)">'+esc(r.destText||'—')+'</td>'
+        +'<td style="'+tdS+'font-size:11px;color:var(--t2,#6b7280)">'+esc(r.prodText||'—')+'</td>'
+        +'</tr>';
+    }).join('');
+    wrap.innerHTML = '<table style="width:100%;border-collapse:collapse"><thead><tr>'
+      +_thClient('client','Client','left')
+      +_thClient('trips','Trips','right')
+      +'<th style="'+thSC+'">Destinations</th>'
+      +'<th style="'+thSC+'">Products</th>'
+      +'</tr></thead><tbody>'+bodyHtmlC+'</tbody></table>';
   }
 
   if (tab === 'clients-short') {
     var csMap = {};
+    // Sum shortage litres and TZS from COMPLETED trips via FUEL_LOSS
     (FUEL_LOSS||[]).forEach(function(f) {
       var trip = (TRIPS||[]).find(function(t){ return t.id===f.tripId||t.tripNo===f.tripNo; });
-      var rel  = trip ? (RELEASES||[]).find(function(r){ return r.releaseNo===trip.releaseNo; }) : null;
-      var c = rel ? (rel.customer||trip&&trip.customer||'—') : (trip&&trip.customer||'—');
-      csMap[c] = (csMap[c]||0) + parseFloat(f.driverOwsTZS||0);
+      if (!trip || (trip.status||'').toUpperCase() !== 'COMPLETED') return;
+      var rel  = (RELEASES||[]).find(function(r){ return r.releaseNo===trip.releaseNo; });
+      var c = rel ? (rel.customer||trip.customer||'—') : (trip.customer||'—');
+      if (!csMap[c]) csMap[c] = {ltr:0, tzs:0};
+      csMap[c].ltr += parseFloat(trip.excessLoss||0);
+      csMap[c].tzs += parseFloat(f.driverOwsTZS||0);
     });
-    var rows = Object.keys(csMap).sort().map(function(c) {
-      var v = csMap[c];
-      return [c, {val:'TZS '+fmt(v), color: v>0?'#b91c1c':'#166534'}];
+    var csRows = Object.keys(csMap).map(function(c) {
+      return {client:c, ltr:Math.round(csMap[c].ltr*100)/100, tzs:csMap[c].tzs};
     });
-    rows.sort(function(a,b){ return csMap[b[0]] - csMap[a[0]]; });
+    csRows.sort(function(a,b){ return b.tzs - a.tzs; });
     var wrap = document.getElementById('rpt-clients-short-wrap');
-    if (wrap) wrap.innerHTML = _rptTbl(
-      ['Client', {label:'Total Shortage (TZS)',align:'right'}],
-      rows, 'No shortage data');
+    if (!wrap) return;
+    if (!csRows.length) { wrap.innerHTML = '<div class="emptystate"><div style="font-size:40px">📊</div><h3>No shortage data</h3></div>'; return; }
+    var thSCS = 'padding:8px 12px;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:rgba(255,255,255,.9);background:var(--ac);white-space:nowrap;text-align:left';
+    var thRCS = thSCS+';text-align:right';
+    var bodyHtmlCS = csRows.map(function(r, idx) {
+      var bg = idx%2===0?'':'background:#fafbfc;';
+      var tdS = 'padding:9px 12px;font-size:12px;border-bottom:1px solid #f0f0f4;';
+      return '<tr style="'+bg+'">'
+        +'<td style="'+tdS+'font-weight:600;color:var(--ac)">'+esc(r.client)+'</td>'
+        +'<td style="'+tdS+'text-align:right;font-family:monospace;color:'+(r.ltr>0?'#b91c1c':'#166534')+'">'+fmt(r.ltr)+' L</td>'
+        +'<td style="'+tdS+'text-align:right;font-family:monospace;font-weight:700;color:'+(r.tzs>0?'#b91c1c':'#166534')+'">TZS '+fmt(r.tzs)+'</td>'
+        +'</tr>';
+    }).join('');
+    wrap.innerHTML = '<table style="width:100%;border-collapse:collapse"><thead><tr>'
+      +'<th style="'+thSCS+'">Client</th>'
+      +'<th style="'+thRCS+'">Shortage (Ltrs)</th>'
+      +'<th style="'+thRCS+'">Total Shortage (TZS)</th>'
+      +'</tr></thead><tbody>'+bodyHtmlCS+'</tbody></table>';
   }
 }
 
